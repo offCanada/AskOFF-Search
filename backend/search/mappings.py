@@ -1,6 +1,5 @@
 from search.synonyms_ca import synonym_tokens
 
-
 _SYNONYM_TOKENS = synonym_tokens()
 
 

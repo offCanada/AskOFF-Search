@@ -1,0 +1,22 @@
+# Production API/indexing profile. It deliberately does not create OpenSearch:
+# point it at an independently operated, authenticated TLS cluster via .env.production.
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env.production
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  indexer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env.production
+    command: ["python", "scripts/bootstrap_index.py"]
+    profiles: ["indexing"]
+    restart: "no"

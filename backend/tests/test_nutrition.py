@@ -72,6 +72,41 @@ class TestParseNutrimentsJson:
         assert result["proteins"]["per_100g"] == 8.0
 
 
+    def test_energy_kcal_to_energy_alias(self):
+        raw = json.dumps({"energy-kcal": {"value": 250.0, "per_100g": 250.0, "unit": "kcal"}})
+        result = parse_nutriments(raw)
+        assert "energy-kcal" in result
+        assert "energy" in result
+        assert result["energy"]["per_100g"] == 250.0
+
+    def test_sodium_and_salt_mutual_derivation(self):
+        # When only sodium is present, salt should be derived
+        raw_sodium_only = json.dumps({"sodium": {"value": 0.4, "per_100g": 0.4, "unit": "g"}})
+        result1 = parse_nutriments(raw_sodium_only)
+        assert "sodium" in result1
+        assert "salt" in result1
+        assert result1["salt"]["per_100g"] == 1.0
+
+        # When only salt is present, sodium should be derived
+        raw_salt_only = json.dumps({"salt": {"value": 2.5, "per_100g": 2.5, "unit": "g"}})
+        result2 = parse_nutriments(raw_salt_only)
+        assert "salt" in result2
+        assert "sodium" in result2
+        assert result2["sodium"]["per_100g"] == 1.0
+
+    def test_flat_key_100g_parsing(self):
+        raw = json.dumps({
+            "proteins_100g": 18.5,
+            "sugars_100g": 2.0,
+            "energy-kcal_100g": 320.0
+        })
+        result = parse_nutriments(raw)
+        assert result["proteins"]["per_100g"] == 18.5
+        assert result["sugars"]["per_100g"] == 2.0
+        assert result["energy-kcal"]["per_100g"] == 320.0
+        assert result["energy"]["per_100g"] == 320.0
+
+
 class TestSearchDocumentBuilderNutrition:
     def _build(self, nutriments: dict) -> RawProduct:
         raw = RawProduct(
@@ -126,3 +161,10 @@ class TestSearchDocumentBuilderNutrition:
         doc = SearchDocumentBuilder().build(self._build(parse_nutriments(zero_sugar_json)))
         attrs = doc.attributes or {}
         assert attrs["flags"]["is_low_sugar"] is True
+
+    def test_low_sodium_derived_flag_from_salt(self):
+        # 0.25g salt -> 0.10g sodium <= 0.12 threshold -> is_low_sodium = True
+        salt_json = json.dumps({"salt": {"value": 0.25, "per_100g": 0.25, "unit": "g"}})
+        doc = SearchDocumentBuilder().build(self._build(parse_nutriments(salt_json)))
+        attrs = doc.attributes or {}
+        assert attrs["flags"]["is_low_sodium"] is True

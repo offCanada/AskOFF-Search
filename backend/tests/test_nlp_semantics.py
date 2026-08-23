@@ -120,10 +120,49 @@ def test_recipe_quantity_extraction_butter():
     assert sq.recipe_quantities[0]["value"] == 2.0
     assert sq.recipe_quantities[0]["unit"] == "tbsp"
 
+def test_recipe_quantity_extraction_oats():
+    sq = SearchQueryPipeline.process("1 cup rolled oats")
+    assert sq.text_term == "rolled oats"
+    assert len(sq.recipe_quantities) == 1
+    assert sq.recipe_quantities[0]["value"] == 1.0
+    assert sq.recipe_quantities[0]["unit"] == "cup"
+
+def test_recipe_quantity_extraction_tomatoes():
+    sq = SearchQueryPipeline.process("250g fresh tomatoes")
+    assert sq.text_term == "fresh tomatoes"
+    assert "fresh" in sq.modifiers
+    assert len(sq.recipe_quantities) == 1
+    assert sq.recipe_quantities[0]["value"] == 250.0
+    assert sq.recipe_quantities[0]["unit"] == "g"
+
 def test_food_with_number_is_preserved():
     sq = SearchQueryPipeline.process("2% milk")
-    assert "milk" in sq.text_term
-    assert "2" in sq.text_term
+    assert "2% milk" in sq.text_term
     assert len(sq.recipe_quantities) == 0
+
+
+def test_numeric_operator_and_mg_unit_are_normalized_for_per_100g_filtering():
+    sq = SearchQueryPipeline.process("sodium <= 120mg soup")
+    assert sq.text_term == "soup"
+    assert sq.numeric_filters == [{
+        "nutrient": "sodium",
+        "operator": "lte",
+        "value": 0.12,
+        "unit": "g",
+        "comparison_basis": "per_100g",
+    }]
+
+
+def test_strict_numeric_operator_is_preserved():
+    sq = SearchQueryPipeline.process("protein > 20g bars")
+    assert sq.text_term == "bars"
+    assert sq.numeric_filters[0]["operator"] == "gt"
+    assert sq.numeric_filters[0]["value"] == 20.0
+
+
+def test_incompatible_nutrition_unit_is_not_converted_into_a_filter():
+    sq = SearchQueryPipeline.process("under 20g calories cookies")
+    assert sq.numeric_filters == []
+    assert "20g calories" in sq.text_term
 
 

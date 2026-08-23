@@ -7,9 +7,6 @@ services:
       - DISABLE_SECURITY_PLUGIN=true
       - DISABLE_INSTALL_DEMO_CONFIG=true
       - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
-    ports:
-      - "9200:9200"
-      - "9600:9600"
     healthcheck:
       test: ["CMD-SHELL", "curl -s http://localhost:9200 | grep -q '\"cluster_name\"'"]
       interval: 10s
@@ -17,6 +14,22 @@ services:
       retries: 30
     volumes:
       - askoff-os-data:/usr/share/opensearch/data
+    restart: unless-stopped
+
+  indexer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    environment:
+      - ASKOFF_ENVIRONMENT=development
+      - ASKOFF_RAW_DATA_PATH=/app/data/raw/normalized.parquet
+      - ASKOFF_OPENSEARCH_INDEX=askoff_products
+      - ASKOFF_OPENSEARCH_HOSTS=["opensearch:9200"]
+    command: ["python", "scripts/bootstrap_index.py"]
+    restart: "no"
 
   api:
     build:
@@ -24,15 +37,15 @@ services:
       dockerfile: Dockerfile
     container_name: askoff-api
     depends_on:
-      opensearch:
-        condition: service_healthy
+      indexer:
+        condition: service_completed_successfully
     environment:
-      - ASKOFF_RAW_DATA_PATH=data/raw/normalized.parquet
+      - ASKOFF_RAW_DATA_PATH=/app/data/raw/normalized.parquet
       - ASKOFF_OPENSEARCH_INDEX=askoff_products
-      - ASKOFF_OPENSEARCH_HOST=opensearch
-      - ASKOFF_OPENSEARCH_PORT=9200
+      - ASKOFF_OPENSEARCH_HOSTS=["opensearch:9200"]
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
 
 volumes:
   askoff-os-data:

@@ -26,9 +26,6 @@ reproduction. This module is the "structured" grader used by the fixed benchmark
 import re as _re
 from typing import Any, Dict, List, Optional
 
-import re as _re
-from typing import Any, Dict, List, Optional
-
 
 def _term_regex(term: str) -> "_re.Pattern":
     """Word-boundary-aware pattern with plural tolerance. 'oat' never matches 'goat' or 'oatmeal'."""
@@ -156,8 +153,6 @@ def evaluate_structured(product, item: Dict[str, Any]) -> Dict[str, Any]:
     name = (product.product_name or "").lower()
     text = (product.search_text or "").lower()
     scope = rel_def.get("group_scope", "anywhere")
-    hay = {"name": name, "text": text if scope == "anywhere" else name}
-
     groups_any = rel_def.get("required_any", [])
     groups_all = rel_def.get("required_all", [])
 
@@ -213,7 +208,7 @@ def evaluate_structured(product, item: Dict[str, Any]) -> Dict[str, Any]:
     if has_keyword_condition:
         if matched_in_name:
             rel = 3
-            reasons.append(kind := f"group_in_name:{matched_in_name[0]}")
+            reasons.append(f"group_in_name:{matched_in_name[0]}")
         elif matched_anywhere:
             rel = 2
             reasons.append(f"group_anywhere:{matched_anywhere[0]}")
@@ -255,18 +250,28 @@ def grade_item(product, item: Dict[str, Any], mode: str = "structured") -> Dict[
 
 
 def knapsack_metrics(relevances: List[int], k: int = 10):
-    """Standard P@5/P@10/NDCG/MRR from a list of integer relevances (0/1/2/3). None scores are excluded."""
+    """Compute result-set P@5/P@10, graded NDCG@k, and binary MRR.
+
+    ``relevances`` contains only the retrieved, programmatically graded hits.
+    Consequently NDCG is normalized against the ideal ordering of this result
+    set, not a complete corpus qrels pool. It is useful for regression, but it
+    is not a corpus-level effectiveness claim until independent qrels exist.
+    """
     import math
 
     clean = [r for r in relevances if r is not None]
     if not clean:
         return {"p5": None, "p10": None, "ndcg": None, "mrr": None}
-    rel = [1 if r >= 2 else 0 for r in clean[:10]] + [0] * (10 - min(len(clean), 10))
-    p5 = sum(rel[:5]) / 5.0
-    p10 = sum(rel[:10]) / 10.0
-    dcg = sum(r / math.log2(i + 2) for i, r in enumerate(rel) if r)
-    ideal = sorted(rel, reverse=True)
-    idcg = sum(r / math.log2(i + 2) for i, r in enumerate(ideal) if r)
+    graded = clean[:k] + [0] * (k - min(len(clean), k))
+    binary = [1 if relevance >= 2 else 0 for relevance in graded]
+    p5 = sum(binary[:5]) / 5.0
+    p10 = sum(binary[:10]) / 10.0
+    gains = [(2**relevance) - 1 for relevance in graded]
+    dcg = sum(gain / math.log2(rank + 2) for rank, gain in enumerate(gains) if gain)
+    ideal_gains = sorted(gains, reverse=True)
+    idcg = sum(
+        gain / math.log2(rank + 2) for rank, gain in enumerate(ideal_gains) if gain
+    )
     ndcg = dcg / idcg if idcg else 0.0
-    mrr = next((1.0 / (i + 1) for i, r in enumerate(rel, 1) if r), 0.0)
+    mrr = next((1.0 / rank for rank, relevance in enumerate(binary, 1) if relevance), 0.0)
     return {"p5": p5, "p10": p10, "ndcg": ndcg, "mrr": mrr}

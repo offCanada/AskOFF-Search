@@ -1,26 +1,48 @@
 # Python
 __pycache__/
 *.py[cod]
+*$py.class
 *.egg-info/
 dist/
 build/
 
-# Environment
+# Environment & Credentials
 .env
+.env.*
+!.env.example
+!.env.production.example
+backend/.env
+
 .venv/
 venv/
+ENV/
 
-# IDE
+# IDE & OS
 .vscode/
 .idea/
-
-# Data
-*.parquet
-*.csv
-
-# Pytest
-.pytest_cache/
-
-# OS
 Thumbs.db
 .DS_Store
+*.swp
+
+# Data & Processing Output
+*.parquet
+*.csv
+backend/data/processed/
+data/processed/
+
+# Testing & Linting
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Evaluation Output Dumps & Evidence
+backend/evaluation/audit_evidence/
+backend/evaluation/black_box_results.json
+backend/evaluation/black_box_digest.txt
+backend/evaluation/FINAL_SEARCH_RESULTS.json
+backend/evaluation/FORENSIC_SEARCH_RESULTS.json
+
+# Scratch & Temporary
+scratch/
+*.log

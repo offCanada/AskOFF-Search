@@ -1,7 +1,10 @@
+import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi.responses import JSONResponse
 
+from config.settings import settings
 from models.search import SearchResponse
 from models.search_document import SearchDocument
 from retrieval.search_engine import SearchEngine
@@ -9,21 +12,34 @@ from retrieval.search_engine import SearchEngine
 from .dependencies import get_search_engine
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+def _search_backend_status(engine: SearchEngine) -> tuple[bool, int, str]:
+    """Return readiness without exposing transport details to API clients."""
+    client = getattr(engine.repository, "client", None)
+    if client is None or not client.ping():
+        return False, 0, "opensearch_unavailable"
+    from config.settings import settings
+
+    if not client.indices.exists(index=settings.opensearch_index):
+        return False, 0, "index_missing"
+    document_count = int(client.count(index=settings.opensearch_index).get("count", 0))
+    if document_count == 0:
+        return False, 0, "index_empty"
+    health = client.cluster.health(index=settings.opensearch_index).get("status", "red")
+    if health == "red":
+        return False, document_count, "index_red"
+    return True, document_count, "ready"
 
 
 @router.get("/")
 async def root(engine: SearchEngine = Depends(get_search_engine)):
-    opensearch_connected = False
-    doc_count = 0
     try:
-        client = getattr(engine.repository, "client", None)
-        if client:
-            opensearch_connected = bool(client.ping())
-            from config.settings import settings
-            res = client.count(index=settings.opensearch_index)
-            doc_count = res.get("count", 0)
+        opensearch_connected, doc_count, _ = _search_backend_status(engine)
     except Exception:
-        pass
+        logger.warning("root_status_check_failed", exc_info=True)
+        opensearch_connected, doc_count = False, 0
 
     return {
         "status": "ok",
@@ -34,12 +50,36 @@ async def root(engine: SearchEngine = Depends(get_search_engine)):
     }
 
 
+@router.get("/health")
+async def health():
+    """Liveness probe: the API process is accepting requests."""
+    return {"status": "ok"}
+
+
+@router.get("/ready")
+async def readiness(engine: SearchEngine = Depends(get_search_engine)):
+    """Readiness probe: serving index is reachable and has been opened."""
+    try:
+        connected, document_count, reason = _search_backend_status(engine)
+    except Exception:
+        logger.warning("readiness_check_failed", exc_info=True)
+        connected, document_count, reason = False, 0, "dependency_check_failed"
+
+    payload = {
+        "status": "ready" if connected else "not_ready",
+        "opensearch_connected": connected,
+        "document_count": document_count,
+        "reason": reason,
+    }
+    return JSONResponse(status_code=200 if connected else 503, content=payload)
+
+
 
 @router.get("/search", response_model=SearchResponse)
 async def search(
-    q: str = Query(..., min_length=1),
-    size: int = Query(20, ge=1, le=100),
-    from_: int = Query(0, ge=0, alias="from"),
+    q: str = Query(..., min_length=1, max_length=settings.request_max_query_length),
+    size: int = Query(20, ge=1, le=settings.request_max_page_size),
+    from_: int = Query(0, ge=0, le=settings.request_max_offset, alias="from"),
     brand: Optional[str] = Query(None),
     category: Optional[str] = Query(None),
     is_organic: Optional[bool] = Query(None),
@@ -71,7 +111,7 @@ async def search(
 
 @router.get("/product/{id}", response_model=SearchDocument)
 async def get_product(
-    id: str,
+    id: str = Path(..., min_length=1, max_length=settings.request_max_query_length),
     engine: SearchEngine = Depends(get_search_engine),
 ):
     product = engine.get_product(id)
@@ -82,8 +122,8 @@ async def get_product(
 
 @router.get("/brand/{brand}", response_model=SearchResponse)
 async def search_brand(
-    brand: str,
-    size: int = Query(20, ge=1, le=100),
+    brand: str = Path(..., min_length=1, max_length=settings.request_max_query_length),
+    size: int = Query(20, ge=1, le=settings.request_max_page_size),
     engine: SearchEngine = Depends(get_search_engine),
 ):
     return engine.search(query="", filters={"brand": brand}, size=size)
@@ -91,8 +131,8 @@ async def search_brand(
 
 @router.get("/category/{category}", response_model=SearchResponse)
 async def search_category(
-    category: str,
-    size: int = Query(20, ge=1, le=100),
+    category: str = Path(..., min_length=1, max_length=settings.request_max_query_length),
+    size: int = Query(20, ge=1, le=settings.request_max_page_size),
     engine: SearchEngine = Depends(get_search_engine),
 ):
     return engine.search(query="", filters={"category": category}, size=size)
@@ -100,8 +140,8 @@ async def search_category(
 
 @router.get("/ingredient/{ingredient}", response_model=SearchResponse)
 async def search_ingredient(
-    ingredient: str,
-    size: int = Query(20, ge=1, le=100),
+    ingredient: str = Path(..., min_length=1, max_length=settings.request_max_query_length),
+    size: int = Query(20, ge=1, le=settings.request_max_page_size),
     engine: SearchEngine = Depends(get_search_engine),
 ):
     return engine.search(query="", filters={"ingredients": ingredient}, size=size)
@@ -109,7 +149,7 @@ async def search_ingredient(
 
 @router.get("/autocomplete")
 async def autocomplete(
-    q: str = Query(..., min_length=1),
+    q: str = Query(..., min_length=1, max_length=settings.request_max_query_length),
     size: int = Query(5, ge=1, le=20),
     engine: SearchEngine = Depends(get_search_engine),
 ):
@@ -118,7 +158,7 @@ async def autocomplete(
 
 @router.get("/suggestions")
 async def suggestions(
-    q: str = Query(..., min_length=1),
+    q: str = Query(..., min_length=1, max_length=settings.request_max_query_length),
     engine: SearchEngine = Depends(get_search_engine),
 ):
     completions = engine.autocomplete(query=q, size=5)
@@ -127,7 +167,7 @@ async def suggestions(
 
 @router.get("/compare")
 async def compare(
-    ids: List[str] = Query(..., min_length=1),
+    ids: List[str] = Query(..., min_length=1, max_length=settings.request_max_compare_ids),
     engine: SearchEngine = Depends(get_search_engine),
 ):
     results = []
@@ -145,7 +185,7 @@ async def compare(
 
 @router.get("/products/{barcode}", response_model=SearchDocument)
 async def legacy_get_product(
-    barcode: str,
+    barcode: str = Path(..., min_length=1, max_length=settings.request_max_query_length),
     engine: SearchEngine = Depends(get_search_engine),
 ):
     return await get_product(id=barcode, engine=engine)
@@ -153,8 +193,8 @@ async def legacy_get_product(
 
 @router.get("/brands/{brand}", response_model=SearchResponse)
 async def legacy_search_brand(
-    brand: str,
-    size: int = Query(20, ge=1, le=100),
+    brand: str = Path(..., min_length=1, max_length=settings.request_max_query_length),
+    size: int = Query(20, ge=1, le=settings.request_max_page_size),
     engine: SearchEngine = Depends(get_search_engine),
 ):
     return await search_brand(brand=brand, size=size, engine=engine)
@@ -162,8 +202,8 @@ async def legacy_search_brand(
 
 @router.get("/categories/{category}", response_model=SearchResponse)
 async def legacy_search_category(
-    category: str,
-    size: int = Query(20, ge=1, le=100),
+    category: str = Path(..., min_length=1, max_length=settings.request_max_query_length),
+    size: int = Query(20, ge=1, le=settings.request_max_page_size),
     engine: SearchEngine = Depends(get_search_engine),
 ):
     return await search_category(category=category, size=size, engine=engine)

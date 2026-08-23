@@ -35,26 +35,70 @@ class ConstraintExtractor:
                     modifiers.append(mod)
                     explanations.append({"field": "modifiers", "explanation": f"Extracted modifier '{mod}'"})
 
-        # 2. Extract Nutrient Numeric Constraints (e.g. 'under 200 calories', 'at least 20g protein')
+        # 2. Extract nutrition constraints. Values in the index are per 100g:
+        # mass nutrients are stored in grams and energy is stored in kcal.  Reject
+        # incompatible units instead of silently comparing unlike quantities.
+        nutrient_aliases = {
+            "protein": "protein", "proteins": "proteins",
+            "sugar": "sugar", "sugars": "sugars",
+            "fat": "fat", "carb": "carbs", "carbs": "carbs",
+            "carbohydrate": "carbohydrates", "carbohydrates": "carbohydrates",
+            "fiber": "fiber", "sodium": "sodium", "salt": "salt",
+            "calorie": "calories", "calories": "calories", "kcal": "kcal",
+            "energy": "energy",
+        }
+        operator_aliases = {
+            "under": "lte", "less than": "lt", "at most": "lte", "no more than": "lte",
+            "<": "lt", "<=": "lte", "at least": "gte", "more than": "gt",
+            "over": "gt", ">": "gt", ">=": "gte",
+        }
+        nutrient_pattern = "|".join(sorted(nutrient_aliases, key=len, reverse=True))
+        operator_pattern = "|".join(re.escape(value) for value in sorted(operator_aliases, key=len, reverse=True))
+        number_pattern = r"\d+(?:\.\d+)?"
+
         numeric_patterns = [
-            (r"\b(?:under|less than|<|<=)\s*(\d+(?:\.\d+)?)\s*(g|mg|kcal|calories)(?:\s+([a-zA-Z]+))?\b", "lte"),
-            (r"\b(?:at least|more than|>|>=|over)\s*(\d+(?:\.\d+)?)\s*(g|mg|kcal|calories)(?:\s+([a-zA-Z]+))?\b", "gte"),
+            # "at least 20g protein" and "under 200 calories"
+            rf"\b(?P<operator>{operator_pattern})\s*(?P<value>{number_pattern})\s*(?P<unit>mg|g|kcal|calories)?\s*(?P<nutrient>{nutrient_pattern})\b",
+            # "protein >= 20g"
+            rf"\b(?P<nutrient>{nutrient_pattern})\s*(?P<operator>{operator_pattern})\s*(?P<value>{number_pattern})\s*(?P<unit>mg|g|kcal|calories)\b",
         ]
-        for pattern, op in numeric_patterns:
-            matches = list(re.finditer(pattern, cleaned_query))
-            for match in matches:
-                val = float(match.group(1))
-                unit = match.group(2)
-                nutrient = match.group(3) if match.group(3) else unit
+        consumed_spans = []
+        for pattern in numeric_patterns:
+            for match in re.finditer(pattern, cleaned_query):
+                if any(match.start() < end and match.end() > start for start, end in consumed_spans):
+                    continue
+                nutrient = nutrient_aliases[match.group("nutrient")]
+                unit = (match.group("unit") or nutrient).lower()
+                value = float(match.group("value"))
+
+                is_energy = nutrient in {"calories", "kcal", "energy"}
+                if is_energy:
+                    if unit not in {"calorie", "calories", "kcal", "energy"}:
+                        continue
+                else:
+                    if unit not in {"g", "mg"}:
+                        continue
+                    if unit == "mg":
+                        value /= 1000.0
+                        unit = "g"
+
+                op = operator_aliases[match.group("operator")]
                 numeric_filters.append({
                     "nutrient": nutrient,
                     "operator": op,
-                    "value": val,
+                    "value": value,
                     "unit": unit,
-                    "comparison_basis": "per_100g"
+                    "comparison_basis": "per_100g",
                 })
-                explanations.append({"field": "numeric", "explanation": f"Numeric constraint: {nutrient} {op} {val}{unit}"})
-                cleaned_query = cleaned_query.replace(match.group(0), " ").strip()
+                explanations.append({
+                    "field": "numeric",
+                    "explanation": f"Numeric constraint: {nutrient} {op} {value}{unit} per 100g",
+                })
+                consumed_spans.append(match.span())
+
+        for start, end in sorted(consumed_spans, reverse=True):
+            cleaned_query = cleaned_query[:start] + " " + cleaned_query[end:]
+        cleaned_query = re.sub(r"\s+", " ", cleaned_query).strip()
 
         # 3. Extract Recipe Quantities (e.g. '500 ml', '2 cups', '1/2 cup', '2 tbsp', '100g')
         # Guard: do not strip fat percentages like '2% milk' or '1% milk' or single product codes/brands like '7up'
@@ -66,6 +110,16 @@ class ConstraintExtractor:
             for match in matches:
                 val_str = match.group(1)
                 unit_str = match.group(2)
+
+                # A mass immediately followed by a nutrition noun belongs to an
+                # invalid nutrition expression (for example "20g calories"), not
+                # a recipe quantity. Leave it intact rather than changing intent.
+                trailing_text = cleaned_query[match.end():]
+                if re.match(
+                    r"\s*(?:protein|proteins|sugar|sugars|fat|carbs?|carbohydrates|fiber|sodium|salt|calories?|kcal|energy)\b",
+                    trailing_text,
+                ):
+                    continue
 
                 # Check fraction
                 if "/" in val_str:

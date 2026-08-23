@@ -60,16 +60,16 @@ class OFFAdapter(BaseAdapter):
                 comp_col = "completeness" if "completeness" in col_names else "NULL as completeness"
 
                 query = f"""
-                    SELECT 
-                        {code_col} as code, 
-                        {name_col} as product_name, 
-                        {brand_col} as brands, 
-                        {cat_col} as categories, 
-                        {ing_col} as ingredients_text, 
-                        {nut_col} as nutriments, 
-                        {ns_col} as nutriscore_grade, 
-                        {nova_col} as nova_group, 
-                        {eco_col} as ecoscore_grade, 
+                    SELECT
+                        {code_col} as code,
+                        {name_col} as product_name,
+                        {brand_col} as brands,
+                        {cat_col} as categories,
+                        {ing_col} as ingredients_text,
+                        {nut_col} as nutriments,
+                        {ns_col} as nutriscore_grade,
+                        {nova_col} as nova_group,
+                        {eco_col} as ecoscore_grade,
                         {comp_col} as completeness
                     FROM '{self.data_path}'
                 """

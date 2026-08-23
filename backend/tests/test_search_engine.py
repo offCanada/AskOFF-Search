@@ -1,8 +1,7 @@
 import pytest
 
 from models.search_document import SearchDocument
-from retrieval.search_engine import SearchEngine
-from retrieval.search_engine import _is_brand_only
+from retrieval.search_engine import SearchEngine, _is_brand_only
 
 
 class CapturingRepository:

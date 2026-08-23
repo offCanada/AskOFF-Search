@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from grading import grade_item, knapsack_metrics
+
 from query.pipeline import SearchQueryPipeline
 
 
@@ -197,7 +198,6 @@ def run_benchmark_evidence(
 
 
 def knapsack_metrics_agg(records: List[Dict[str, Any]]) -> Dict[str, float]:
-    import math
 
     def avg(vals):
         vals = [v for v in vals if v is not None]

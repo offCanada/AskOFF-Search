@@ -92,10 +92,44 @@ def _normalize_nutriment_object(obj: dict) -> dict[str, dict]:
             "per_100g": per_100g,
             "unit": unit if isinstance(unit, str) and unit else None,
         }
-    # Alias 'energy' to 'energy-kcal' when the latter is absent so existing
-    # nutrient field mappings (calories/kcal -> energy-kcal) keep working.
+
+    # Handle flat key patterns like 'proteins_100g', 'sugars_100g', 'energy-kcal_100g'
+    for name, entry in list(obj.items()):
+        if isinstance(name, str) and name.endswith("_100g"):
+            base_name = name[:-5]
+            if base_name and base_name not in result:
+                val = _coerce_float(entry)
+                if val is not None:
+                    result[base_name] = {
+                        "value": val,
+                        "per_100g": val,
+                        "unit": None,
+                    }
+
+    # Bidirectional alias for energy <-> energy-kcal so all downstream lookups work
     if "energy" in result and "energy-kcal" not in result:
         result["energy-kcal"] = result["energy"]
+    elif "energy-kcal" in result and "energy" not in result:
+        result["energy"] = result["energy-kcal"]
+
+    # Mutual derivation for sodium <-> salt (salt ~= sodium * 2.5) if one is missing
+    if "sodium" in result and "salt" not in result:
+        s_entry = result["sodium"]
+        if s_entry.get("per_100g") is not None:
+            result["salt"] = {
+                "value": s_entry["value"] * 2.5 if s_entry.get("value") is not None else None,
+                "per_100g": s_entry["per_100g"] * 2.5,
+                "unit": s_entry.get("unit") or "g",
+            }
+    elif "salt" in result and "sodium" not in result:
+        s_entry = result["salt"]
+        if s_entry.get("per_100g") is not None:
+            result["sodium"] = {
+                "value": s_entry["value"] / 2.5 if s_entry.get("value") is not None else None,
+                "per_100g": s_entry["per_100g"] / 2.5,
+                "unit": s_entry.get("unit") or "g",
+            }
+
     return result
 
 

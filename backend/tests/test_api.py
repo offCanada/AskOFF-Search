@@ -26,6 +26,50 @@ class TestSearchEndpoint:
         response = test_client.get("/search", params={"q": "test", "size": 200})
         assert response.status_code == 422
 
+    def test_search_rejects_an_unbounded_query_payload(self, test_client):
+        response = test_client.get("/search", params={"q": "x" * 501})
+        assert response.status_code == 422
+
+    def test_search_rejects_an_unbounded_offset(self, test_client):
+        response = test_client.get("/search", params={"q": "test", "from": 10_001})
+        assert response.status_code == 422
+
+
+class TestHealthEndpoints:
+    def test_health_is_a_liveness_probe(self, test_client):
+        response = test_client.get("/health")
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json() == {"status": "ok"}
+        assert response.headers["X-Request-ID"]
+
+    def test_ready_reports_search_backend_state(self, test_client):
+        response = test_client.get("/ready")
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["status"] == "ready"
+        assert response.json()["opensearch_connected"] is True
+
+    def test_ready_returns_503_when_opensearch_is_unavailable(self, test_app, mock_search_engine):
+        mock_search_engine.repository.client.ping.return_value = False
+        from fastapi.testclient import TestClient
+
+        response = TestClient(test_app).get("/ready")
+        assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert response.json()["reason"] == "opensearch_unavailable"
+
+    def test_opensearch_error_response_does_not_leak_connection_details(
+        self, test_app, mock_search_engine
+    ):
+        from fastapi.testclient import TestClient
+        from opensearchpy.exceptions import ConnectionError
+
+        mock_search_engine.search.side_effect = ConnectionError(
+            "password=unsafe http://internal-opensearch:9200", "", None
+        )
+        response = TestClient(test_app).get("/search", params={"q": "milk"})
+        assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert response.json()["detail"] == "Search is temporarily unavailable."
+        assert "internal-opensearch" not in response.text
+
 
 class TestProductEndpoint:
     def test_get_product_returns_200(self, test_client):
@@ -101,4 +145,3 @@ class TestOpenSearchUnavailable:
         assert response.status_code == 503
         data = response.json()
         assert "search_engine_unavailable" in data.get("error", "")
-

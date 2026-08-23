@@ -1,10 +1,13 @@
 import json
 import logging
 import math
+import time
+from typing import Optional
 
 from opensearchpy import OpenSearch, helpers
 
 from config.settings import settings
+from models.search_document import SearchDocument
 
 from .client import get_client
 from .mappings import PRODUCT_INDEX_MAPPING
@@ -29,8 +32,8 @@ class _NanSafeJSONEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-def ensure_index(client: OpenSearch) -> None:
-    index_name = settings.opensearch_index
+def ensure_index(client: OpenSearch, index_name: Optional[str] = None) -> None:
+    index_name = index_name or settings.opensearch_index
     if client.indices.exists(index=index_name):
         logger.info("Index '%s' already exists", index_name)
         return
@@ -38,25 +41,27 @@ def ensure_index(client: OpenSearch) -> None:
     logger.info("Created index '%s'", index_name)
 
 
-def delete_index(client: OpenSearch) -> None:
-    index_name = settings.opensearch_index
+def delete_index(client: OpenSearch, index_name: Optional[str] = None) -> None:
+    index_name = index_name or settings.opensearch_index
     if client.indices.exists(index=index_name):
         client.indices.delete(index=index_name)
         logger.info("Deleted index '%s'", index_name)
 
 
-import time
-
-from models.search_document import SearchDocument
-
-
-def index_products(products: list[SearchDocument], max_retries: int = 3) -> int:
-    client = get_client()
-    ensure_index(client)
+def index_products(
+    products: list[SearchDocument],
+    max_retries: int = 3,
+    *,
+    client: Optional[OpenSearch] = None,
+    index_name: Optional[str] = None,
+) -> int:
+    client = client or get_client()
+    index_name = index_name or settings.opensearch_index
+    ensure_index(client, index_name)
 
     actions = [
         {
-            "_index": settings.opensearch_index,
+            "_index": index_name,
             "_id": p.id,
             "_source": _sanitize(p.model_dump()),
         }

@@ -98,7 +98,7 @@ class DuckDBSearchRepository:
         # Retrieve candidates from the 114k Parquet dataset
         fetch_limit = 2000
         sql = f"""
-            SELECT code, product_name_clean, brands_clean, categories_clean, ingredients_clean, 
+            SELECT code, product_name_clean, brands_clean, categories_clean, ingredients_clean,
                    nutriments, nutriscore_grade, nova_group, ecoscore_grade, completeness, search_text
             FROM '{self.parquet_path}'
             WHERE {where_sql}
@@ -128,7 +128,6 @@ class DuckDBSearchRepository:
             search_lower = search_text.lower()
 
             # Canonicalize haystacks so synonymous spellings ('yoghurt') score same as 'yogurt'
-            from search.synonyms_ca import canonicalize
             name_lower = canonicalize(name_lower)
             brand_lower = canonicalize(brand_lower)
             cat_lower = canonicalize(cat_lower)
@@ -168,17 +167,24 @@ class DuckDBSearchRepository:
             )
 
             # Check boolean filter flags
-            if filters.get("is_organic") is True and not is_organic: continue
-            if filters.get("is_vegan") is True and not is_vegan: continue
-            if filters.get("is_vegetarian") is True and not is_vegetarian: continue
-            if filters.get("is_gluten_free") is True and not is_gluten_free: continue
-            if filters.get("is_high_protein") is True and not is_high_protein: continue
-            if filters.get("is_low_sugar") is True and not is_low_sugar: continue
-            if filters.get("is_low_sodium") is True and not is_low_sodium: continue
-            if filters.get("is_lactose_free") is True and not is_lactose_free: continue
+            if filters.get("is_organic") is True and not is_organic:
+                continue
+            if filters.get("is_vegan") is True and not is_vegan:
+                continue
+            if filters.get("is_vegetarian") is True and not is_vegetarian:
+                continue
+            if filters.get("is_gluten_free") is True and not is_gluten_free:
+                continue
+            if filters.get("is_high_protein") is True and not is_high_protein:
+                continue
+            if filters.get("is_low_sugar") is True and not is_low_sugar:
+                continue
+            if filters.get("is_low_sodium") is True and not is_low_sodium:
+                continue
+            if filters.get("is_lactose_free") is True and not is_lactose_free:
+                continue
 
             # Parse nutriments
-            from repositories.opensearch_repository import NUTRIENT_FIELD_MAP
             from utils.off_parser import parse_nutriments
             parsed_nutriments = parse_nutriments(nut_raw)
 
@@ -300,7 +306,7 @@ class DuckDBSearchRepository:
     def get_by_id(self, doc_id: str) -> Optional[SearchDocument]:
         safe_id = doc_id.replace("'", "''")
         sql = f"""
-            SELECT code, product_name_clean, brands_clean, categories_clean, ingredients_clean, 
+            SELECT code, product_name_clean, brands_clean, categories_clean, ingredients_clean,
                    nutriments, nutriscore_grade, nova_group, ecoscore_grade, completeness, search_text
             FROM '{self.parquet_path}'
             WHERE code = '{safe_id}'
@@ -347,8 +353,6 @@ def evaluate_product(product: SearchDocument, item: Dict[str, Any]) -> int:
     """
     name = (product.product_name or "").lower()
     brand = (product.brand or "").lower()
-    cat = (product.category or "").lower()
-    ing = (product.ingredients or "").lower()
     text = (product.search_text or "").lower()
     flags = product.attributes.get("flags", {}) if product.attributes else {}
 
@@ -417,7 +421,6 @@ def run_benchmark():
         repo = DuckDBSearchRepository()
     engine = SearchEngine(repository=repo)
 
-    results_table = []
     p5_list = []
     p10_list = []
     ndcg10_list = []

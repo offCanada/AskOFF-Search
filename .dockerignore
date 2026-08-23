@@ -1,0 +1,10 @@
+.git
+.venv
+frontend
+scratch
+**/__pycache__
+**/.pytest_cache
+backend/evaluation/audit_evidence
+backend/evaluation/*RESULTS*.json
+backend/all_code.txt
+*.pyc
