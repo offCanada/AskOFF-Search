@@ -18,7 +18,11 @@ class Settings(BaseSettings):
     opensearch_max_retries: int = 2
     opensearch_pool_maxsize: int = 20
 
-    raw_data_path: Path = Path("data/raw/normalized.parquet")
+    raw_data_path: Path = (
+        Path("data/raw/off_canada_with_images.parquet")
+        if Path("data/raw/off_canada_with_images.parquet").exists()
+        else Path("data/raw/normalized.parquet")
+    )
     processed_dir: Path = Path("data/processed")
     dataset_url: str = ""
 

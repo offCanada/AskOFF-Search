@@ -27,7 +27,7 @@ services:
         condition: service_healthy
     environment:
       - ASKOFF_ENVIRONMENT=development
-      - ASKOFF_RAW_DATA_PATH=/app/data/raw/normalized.parquet
+      - ASKOFF_RAW_DATA_PATH=/app/data/raw/off_canada_with_images.parquet
       - ASKOFF_OPENSEARCH_INDEX=askoff_products
       - ASKOFF_OPENSEARCH_HOSTS=["opensearch:9200"]
     command: ["python", "scripts/bootstrap_index.py"]
@@ -42,7 +42,7 @@ services:
       indexer:
         condition: service_completed_successfully
     environment:
-      - ASKOFF_RAW_DATA_PATH=/app/data/raw/normalized.parquet
+      - ASKOFF_RAW_DATA_PATH=/app/data/raw/off_canada_with_images.parquet
       - ASKOFF_OPENSEARCH_INDEX=askoff_products
       - ASKOFF_OPENSEARCH_HOSTS=["opensearch:9200"]
       - ASKOFF_CORS_ORIGINS=["http://localhost:3000","http://localhost:5173","http://127.0.0.1:5173","http://127.0.0.1:3000"]

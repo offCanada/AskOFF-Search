@@ -7,8 +7,21 @@ from typing import Any, Optional
 logger = logging.getLogger(__name__)
 
 
-def parse_multilingual_field(raw: str) -> list[dict[str, str]]:
+def parse_multilingual_field(raw: Any) -> list[dict[str, str]]:
     if not raw or raw == "[]":
+        return []
+
+    if isinstance(raw, list):
+        results = []
+        for item in raw:
+            if isinstance(item, dict):
+                lang = item.get("lang") or "main"
+                text = item.get("text")
+                if text:
+                    results.append({"lang": str(lang), "text": str(text).strip()})
+        return results
+
+    if not isinstance(raw, str):
         return []
 
     blocks = re.findall(r'\{([^{}]+)\}', raw)
@@ -26,6 +39,10 @@ def parse_multilingual_field(raw: str) -> list[dict[str, str]]:
                 "lang": lang_match.group(1),
                 "text": text_match.group(2).strip()
             })
+
+    if not results and raw.strip() and not raw.startswith("["):
+        results.append({"lang": "main", "text": raw.strip()})
+
     return results
 
 
@@ -35,11 +52,12 @@ def extract_text_by_language(
 ) -> str:
     if not entries:
         return ""
-    for entry in entries:
-        if isinstance(entry, dict) and entry.get("lang") in preferred_langs:
-            text = entry.get("text", "")
-            if text:
-                return text
+    for pref in preferred_langs:
+        for entry in entries:
+            if isinstance(entry, dict) and entry.get("lang") == pref:
+                text = entry.get("text", "")
+                if text:
+                    return text
     for entry in entries:
         if isinstance(entry, dict):
             text = entry.get("text", "")
@@ -48,12 +66,12 @@ def extract_text_by_language(
     return ""
 
 
-def parse_product_name(raw: str) -> str:
+def parse_product_name(raw: Any) -> str:
     entries = parse_multilingual_field(raw)
     return extract_text_by_language(entries)
 
 
-def parse_ingredients_text(raw: str) -> str:
+def parse_ingredients_text(raw: Any) -> str:
     entries = parse_multilingual_field(raw)
     return extract_text_by_language(entries)
 
@@ -182,6 +200,7 @@ def parse_nutriments(raw: Any) -> dict[str, dict]:
 
     Supports:
     - JSON-style objects:  {"energy": {"value": 333.0, "per_100g": 1393.0, "unit": "kcal"}}
+    - Native DuckDB list of structs: [{"name": "sugars", "100g": 0.5, "unit": "g"}]
     - Legacy OF-list-style strings from the OFF CSV export format
     - dict inputs (already parsed JSON)
 
@@ -192,6 +211,15 @@ def parse_nutriments(raw: Any) -> dict[str, dict]:
 
     if isinstance(raw, dict):
         return _normalize_nutriment_object(raw)
+
+    if isinstance(raw, list):
+        obj = {}
+        for item in raw:
+            if isinstance(item, dict):
+                name = item.get("name")
+                if name and isinstance(name, str):
+                    obj[name] = item
+        return _normalize_nutriment_object(obj)
 
     if not isinstance(raw, str):
         return {}
@@ -207,6 +235,54 @@ def parse_nutriments(raw: Any) -> dict[str, dict]:
         return _normalize_nutriment_object(obj)
 
     return _parse_nutriments_list_style(text)
+
+
+def extract_off_image_url(barcode: str, front_image_url: Any = None, images_raw: Any = None) -> Optional[str]:
+    """
+    Extract or derive a canonical Open Food Facts CDN image URL.
+    Does NOT download image files.
+    Returns None if no reliable image metadata is present.
+    """
+    if front_image_url and isinstance(front_image_url, str) and front_image_url.strip():
+        url = front_image_url.strip()
+        if url.startswith("http://") or url.startswith("https://"):
+            return url
+
+    if not barcode or not images_raw or not isinstance(images_raw, list):
+        return None
+
+    clean_code = str(barcode).strip()
+    if not clean_code:
+        return None
+
+    img_map = {
+        item["key"]: item
+        for item in images_raw
+        if isinstance(item, dict) and item.get("key")
+    }
+
+    front_keys = ["front_en", "front_fr", "front"]
+    target_id = None
+
+    for fk in front_keys:
+        if fk in img_map and img_map[fk].get("imgid"):
+            target_id = str(img_map[fk]["imgid"])
+            break
+
+    if not target_id:
+        for k, v in img_map.items():
+            if k.startswith("front") and v.get("imgid"):
+                target_id = str(v["imgid"])
+                break
+
+    if not target_id and "1" in img_map:
+        target_id = "1"
+
+    if target_id:
+        return f"https://images.openfoodfacts.org/images/products/{clean_code}/{target_id}.jpg"
+
+    return None
+
 
 def safe_str(val: Any) -> str:
     if val is None:

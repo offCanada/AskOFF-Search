@@ -21,6 +21,8 @@ sys.path.insert(0, str(BASE))
 
 import duckdb  # noqa: E402
 
+from utils.off_parser import parse_ingredients_text  # noqa: E402
+
 
 def _clean_piece(piece: str) -> str | None:
     piece = piece.strip().lower()
@@ -41,9 +43,9 @@ def build(source: Path, top_brands: int, top_categories: int, top_ingredients: i
     try:
         cols = con.execute(f"DESCRIBE SELECT * FROM '{source}'").fetchall()
         col_names = {c[0].lower() for c in cols}
-        brand_col = "brands" if "brands" in col_names else "brand"
-        cat_col = "categories" if "categories" in col_names else "category"
-        ing_col = "ingredients_text" if "ingredients_text" in col_names else "ingredients"
+        brand_col = "brands_clean" if "brands_clean" in col_names else ("brands" if "brands" in col_names else "brand")
+        cat_col = "categories_clean" if "categories_clean" in col_names else ("categories" if "categories" in col_names else "category")
+        ing_col = "ingredients_clean" if "ingredients_clean" in col_names else ("ingredients_text" if "ingredients_text" in col_names else "ingredients")
 
         brand_counter: Counter = Counter()
         cat_counter: Counter = Counter()
@@ -59,15 +61,23 @@ def build(source: Path, top_brands: int, top_categories: int, top_ingredients: i
                     if cleaned:
                         brand_counter[cleaned] += 1
             if cat_raw:
-                for piece in str(cat_raw).split(","):
-                    cleaned = _clean_piece(piece)
-                    if cleaned:
-                        cat_counter[cleaned] += 1
+                if isinstance(cat_raw, list):
+                    for piece in cat_raw:
+                        cleaned = _clean_piece(str(piece))
+                        if cleaned:
+                            cat_counter[cleaned] += 1
+                else:
+                    for piece in str(cat_raw).split(","):
+                        cleaned = _clean_piece(piece)
+                        if cleaned:
+                            cat_counter[cleaned] += 1
             if ing_raw:
-                for piece in str(ing_raw).split(","):
-                    cleaned = _clean_piece(piece)
-                    if cleaned:
-                        ing_counter[cleaned] += 1
+                ing_text = parse_ingredients_text(ing_raw) if (isinstance(ing_raw, list) or (isinstance(ing_raw, str) and "{" in ing_raw)) else str(ing_raw)
+                if ing_text:
+                    for piece in re.split(r"[,;()]", ing_text):
+                        cleaned = _clean_piece(piece)
+                        if cleaned:
+                            ing_counter[cleaned] += 1
     finally:
         con.close()
 
@@ -105,8 +115,13 @@ def build(source: Path, top_brands: int, top_categories: int, top_ingredients: i
 
 
 def main() -> None:
+    default_source = (
+        "data/raw/off_canada_with_images.parquet"
+        if Path("data/raw/off_canada_with_images.parquet").exists()
+        else "data/raw/normalized.parquet"
+    )
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", default="data/raw/normalized.parquet")
+    parser.add_argument("--source", default=default_source)
     parser.add_argument("--output", default=str(BASE / "data" / "dictionaries.json"))
     parser.add_argument("--top-brands", type=int, default=12000)
     parser.add_argument("--top-categories", type=int, default=6000)

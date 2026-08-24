@@ -58,7 +58,9 @@ class SearchDocumentBuilder:
             "nutriscore_grade": raw.nutriscore_grade,
             "nova_group": raw.nova_group,
             "ecoscore_grade": raw.ecoscore_grade,
-            "completeness": raw.completeness
+            "completeness": raw.completeness,
+            "image_url": getattr(raw, "image_url", None),
+            "front_image_url": getattr(raw, "image_url", None),
         }
 
         parts = [

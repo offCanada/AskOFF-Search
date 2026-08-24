@@ -14,3 +14,5 @@ class RawProduct(BaseModel):
     nova_group: Optional[int] = None
     ecoscore_grade: Optional[str] = None
     completeness: float = 0.0
+    image_url: Optional[str] = None
+
