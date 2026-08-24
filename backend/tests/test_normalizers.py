@@ -45,6 +45,18 @@ class TestOFFAdapterParsing:
         assert parse_ingredients_text("[]") == ""
         assert parse_nutriments("") == {}
 
+    def test_sanitize_product_text_and_newline_artifacts(self):
+        from utils.off_parser import parse_product_name, sanitize_product_text
+
+        assert sanitize_product_text("cake\ncake") == "cake cake"
+        assert sanitize_product_text("cake\\ncake") == "cake cake"
+        assert sanitize_product_text("  organic\t\tjuice \r\n 100% ") == "organic juice 100%"
+        assert sanitize_product_text("Smooth Peanut Butter") == "Smooth Peanut Butter"
+
+        # Verify parse_product_name strips newlines from raw data
+        assert parse_product_name("cake\ncake") == "cake cake"
+        assert parse_product_name("cake\\ncake") == "cake cake"
+
     def test_extract_off_image_url_direct_and_derived(self):
         from utils.off_parser import extract_off_image_url
 

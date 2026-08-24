@@ -192,14 +192,14 @@ class ConstraintExtractor:
             (r"\b(?:no[- ]palm[- ]oil|palm[- ]oil[- ]free|without[- ]palm[- ]oil|free[- ]of[- ]palm[- ]oil)\b", "palm_oil", False, "Matched palm oil exclusion"),
             (r"\b(?:palm[- ]oil)\b", "palm_oil", True, "Matched 'palm oil' keyword"),
             (r"\b(?:high[- ]protein|protein[- ]rich|rich[- ]in[- ]protein|extra[- ]protein)\b", "high_protein", True, "Matched high protein requirement (>= 10g/100g)"),
-            (r"\b(?:low[- ]sugar|sugar[- ]free|zero[- ]sugar|no[- ]sugar|without[- ]sugar|less[- ]sugar)\b", "low_sugar", True, "Matched low or zero sugar requirement"),
+            (r"\b(?:low[- ]sugar|less[- ]sugar|reduced[- ]sugar)\b", "low_sugar", True, "Matched low sugar requirement (<= 5.0g/100g)"),
             (r"\b(?:low[- ]sodium|sodium[- ]free|salt[- ]free|no[- ]salt|low[- ]salt|no[- ]sodium|without[- ]sodium|less[- ]sodium)\b", "low_sodium", True, "Matched low sodium requirement"),
             (r"\b(?:gluten[- ]free|no[- ]gluten|without[- ]gluten|free[- ]of[- ]gluten)\b", "gluten_free", True, "Matched gluten-free requirement"),
             (r"\b(?:lactose[- ]free|dairy[- ]free|no[- ]lactose|without[- ]lactose|free[- ]of[- ]lactose)\b", "lactose_free", True, "Matched lactose-free requirement")
         ]
 
         # Extract zero-sugar numeric filter if "zero sugar" / "sugar free" was present
-        zero_sugar_pattern = r"\b(?:zero[- ]sugar|0[- ]sugar|0g[- ]sugar|no[- ]sugar|without[- ]sugar|sugar[- ]free|0%[- ]sugar|no[- ]added[- ]sugar)\b"
+        zero_sugar_pattern = r"\b(?:zero[- ]sugar|0[- ]sugar|0g[- ]sugar|no[- ]sugar|without[- ]sugar|sugar[- ]free|0%[- ]sugar|no[- ]added[- ]sugar|sans[- ]sucre)\b"
         if re.search(zero_sugar_pattern, normalized_query):
             if not any(nf.get("nutrient") in {"sugar", "sugars"} for nf in numeric_filters):
                 numeric_filters.append({
@@ -210,6 +210,13 @@ class ConstraintExtractor:
                     "comparison_basis": "per_100g",
                     "is_zero_constraint": True
                 })
+                explanations.append({
+                    "field": "numeric_filters",
+                    "explanation": "Matched zero sugar requirement (<= 0.5g/100g)"
+                })
+            temp = re.sub(zero_sugar_pattern, " ", cleaned_query).strip()
+            if temp:
+                cleaned_query = temp
 
         for pattern, key, value, explanation in dietary_patterns:
             if filters[key] is not None:

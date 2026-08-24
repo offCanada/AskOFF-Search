@@ -100,7 +100,7 @@ class TestEntityExtractor:
 class TestConstraintExtractor:
     def test_extract_all_constraints(self):
         query = (
-            "organic vegan vegetarian palm oil free high protein sugar free "
+            "organic vegan vegetarian palm oil free high protein low sugar "
             "low salt gluten free lactose free"
         )
         res = ConstraintExtractor.extract(query)
@@ -130,12 +130,12 @@ class TestConstraintExtractor:
 
 class TestSearchQueryPipeline:
     def test_pipeline_orchestrates_full_flow(self):
-        q = "organic sugar-free syrup from butternut mountain farm"
+        q = "organic low-sugar syrup from butternut mountain farm"
         sq = SearchQueryPipeline.process(q)
 
         assert isinstance(sq, SearchQuery)
         assert sq.original_query == q
-        assert sq.normalized_query == "organic sugar-free syrup from butternut mountain farm"
+        assert sq.normalized_query == "organic low-sugar syrup from butternut mountain farm"
         assert sq.filters["organic"] is True
         assert sq.filters["low_sugar"] is True
 

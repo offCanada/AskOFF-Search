@@ -46,6 +46,19 @@ def parse_multilingual_field(raw: Any) -> list[dict[str, str]]:
     return results
 
 
+def sanitize_product_text(text: str) -> str:
+    """
+    Sanitize literal unescaped/escaped newlines, carriage returns, tabs, and duplicate spaces.
+    Preserves legitimate text content without altering product names unnecessarily.
+    Example: 'cake\\ncake' or 'cake\\ncake' -> 'cake cake'.
+    """
+    if not text or not isinstance(text, str):
+        return ""
+    t = text.replace("\\n", " ").replace("\\r", " ").replace("\\t", " ")
+    t = t.replace("\n", " ").replace("\r", " ").replace("\t", " ")
+    return re.sub(r"\s+", " ", t).strip()
+
+
 def extract_text_by_language(
     entries: list[dict[str, str]],
     preferred_langs: tuple[str, ...] = ("en", "main", "fr"),
@@ -57,23 +70,33 @@ def extract_text_by_language(
             if isinstance(entry, dict) and entry.get("lang") == pref:
                 text = entry.get("text", "")
                 if text:
-                    return text
+                    return sanitize_product_text(text)
     for entry in entries:
         if isinstance(entry, dict):
             text = entry.get("text", "")
             if text:
-                return text
+                return sanitize_product_text(text)
     return ""
 
 
 def parse_product_name(raw: Any) -> str:
+    if not raw or raw == "[]":
+        return ""
     entries = parse_multilingual_field(raw)
-    return extract_text_by_language(entries)
+    extracted = extract_text_by_language(entries)
+    if not extracted and isinstance(raw, str) and raw != "[]":
+        extracted = raw
+    return sanitize_product_text(extracted)
 
 
 def parse_ingredients_text(raw: Any) -> str:
+    if not raw or raw == "[]":
+        return ""
     entries = parse_multilingual_field(raw)
-    return extract_text_by_language(entries)
+    extracted = extract_text_by_language(entries)
+    if not extracted and isinstance(raw, str) and raw != "[]":
+        extracted = raw
+    return sanitize_product_text(extracted)
 
 
 def _coerce_float(val: Any) -> Optional[float]:
@@ -237,6 +260,16 @@ def parse_nutriments(raw: Any) -> dict[str, dict]:
     return _parse_nutriments_list_style(text)
 
 
+def format_off_barcode_path(barcode: str) -> str:
+    clean = str(barcode).strip()
+    if len(clean) <= 8:
+        return clean
+    m = re.match(r"^(\d{3})(\d{3})(\d{3})(.*)$", clean)
+    if m:
+        return f"{m.group(1)}/{m.group(2)}/{m.group(3)}/{m.group(4)}"
+    return clean
+
+
 def extract_off_image_url(barcode: str, front_image_url: Any = None, images_raw: Any = None) -> Optional[str]:
     """
     Extract or derive a canonical Open Food Facts CDN image URL.
@@ -289,7 +322,7 @@ def safe_str(val: Any) -> str:
         return ""
     if isinstance(val, float) and math.isnan(val):
         return ""
-    return str(val)
+    return sanitize_product_text(str(val))
 
 def safe_float(val: Any) -> float:
     if val is None or (isinstance(val, float) and math.isnan(val)):
