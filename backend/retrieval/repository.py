@@ -12,6 +12,7 @@ class SearchRepository(ABC):
         filters: Optional[dict] = None,
         numeric_filters: Optional[List[dict]] = None,
         modifiers: Optional[List[str]] = None,
+        ranking_preferences: Optional[dict] = None,
         size: int = 20,
         from_: int = 0,
         explain: bool = False

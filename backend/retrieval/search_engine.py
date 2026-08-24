@@ -1,3 +1,4 @@
+import inspect
 import time
 from typing import Any, Dict, List, Optional, Union
 
@@ -74,11 +75,6 @@ class SearchEngine:
         # Build retrieval filters from entities and constraints
         retrieval_filters: Dict[str, Any] = {}
 
-# Only turn entities into mandatory filters if the user explicitly requested
-        # it (intent) OR if it was an explicit API parameter override (in which case
-        # it was added with intent fallback). Explicit API parameters were injected
-        # with explanation "Manual override...".
-
         def is_explicit_override(entity_list: List[Dict]) -> bool:
             if not entity_list:
                 return False
@@ -95,15 +91,9 @@ class SearchEngine:
             if brand_entities:
                 retrieval_filters["brand"] = brand_entities[0]["value"]
 
-        # D2 fix: under generic intent a recognized brand that is NOT also a
-        # category/ingredient word (avoids 'chips'/'soy' false positives) is promoted
+        # Promotes a recognized unambiguous brand (e.g. Compliments, Silk, Kraft)
         # to a hard brand filter when product terms remain in the query text.
-        elif (
-            brand_entities
-            and search_query.intent == "generic_search"
-            and _is_brand_only(brand_entities[0]["value"])
-            and search_query.text_term
-        ):
+        elif brand_entities and _is_brand_only(brand_entities[0]["value"]) and search_query.text_term:
             brand_value = brand_entities[0]["value"]
             remaining = _strip_brand_from_text(search_query.text_term, brand_value)
             if remaining:
@@ -151,16 +141,26 @@ class SearchEngine:
         # Collect additional context for the repository layer
         numeric_filters = getattr(search_query, "numeric_filters", [])
         modifiers = getattr(search_query, "modifiers", [])
+        ranking_preferences = getattr(search_query, "ranking_preferences", {})
 
-        total, hits, repo_metadata = self.repository.search(
-            query=text_term,
-            filters=final_filters,
-            numeric_filters=numeric_filters,
-            modifiers=modifiers,
-            size=q_size,
-            from_=q_from,
-            explain=explain
-        )
+        repo_kwargs: Dict[str, Any] = {
+            "query": text_term,
+            "filters": final_filters,
+            "numeric_filters": numeric_filters,
+            "modifiers": modifiers,
+            "size": q_size,
+            "from_": q_from,
+            "explain": explain,
+        }
+
+        try:
+            sig = inspect.signature(self.repository.search)
+            if "ranking_preferences" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+                repo_kwargs["ranking_preferences"] = ranking_preferences
+        except (ValueError, TypeError):
+            pass
+
+        total, hits, repo_metadata = self.repository.search(**repo_kwargs)
 
         took_ms = int((time.time() - start_time) * 1000)
 
@@ -184,7 +184,7 @@ class SearchEngine:
                 "numeric_filters": numeric_filters,
                 "modifiers": getattr(search_query, "modifiers", []),
                 "recipe_quantities": getattr(search_query, "recipe_quantities", []),
-                "ranking_preferences": search_query.ranking_preferences,
+                "ranking_preferences": ranking_preferences,
                 "pagination": {
                     "size": q_size,
                     "from": q_from,

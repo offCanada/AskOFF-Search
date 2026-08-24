@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from opensearchpy import OpenSearch
 from opensearchpy.exceptions import NotFoundError
@@ -15,33 +15,39 @@ NUTRIENT_FIELD_MAP = {
     "sugar": "sugars",
     "sugars": "sugars",
     "fat": "fat",
+    "fats": "fat",
     "calories": "energy-kcal",
+    "calorie": "energy-kcal",
     "kcal": "energy-kcal",
     "energy": "energy-kcal",
+    "energy-kcal": "energy-kcal",
     "sodium": "sodium",
     "salt": "salt",
     "carbs": "carbohydrates",
+    "carbohydrate": "carbohydrates",
     "carbohydrates": "carbohydrates",
     "fiber": "fiber",
+    "fibre": "fiber",
     "saturated fat": "saturated-fat",
+    "saturated-fat": "saturated-fat",
 }
 
+
 class OpenSearchSearchRepository(SearchRepository):
-    def __init__(self, client: Optional[OpenSearch] = None, ranking_manager: Optional[RankingManager] = None) -> None:
+    def __init__(
+        self,
+        client: Optional[OpenSearch] = None,
+        ranking_manager: Optional[RankingManager] = None,
+        index: Optional[str] = None,
+    ) -> None:
         self.client = client or get_client()
-        self.index = settings.opensearch_index
+        self.index = index or settings.opensearch_index
         self.ranking_manager = ranking_manager or RankingManager()
 
     @staticmethod
     def _tiered_minimum_should_match(query: str) -> int:
         """
-        D3 fix: the OR clause must not let a single incidental token dominate.
-
-        - 1 token  : normal fuzzy (any match of the single token)
-        - 2 tokens : require 2 (both) so brand labels / off-topic docs can't fill slots
-                    (e.g. 'vegan cookies' must match vegan AND cookie)
-        - 3+ tokens: require at least half, so no single-token pollution while
-                    allowing OR-style fuzziness (e.g. 'frozen vegetables' needs >=2).
+        Tiered matching: ensure multi-token queries don't let single incidental tokens dominate.
         """
         import re
 
@@ -58,14 +64,15 @@ class OpenSearchSearchRepository(SearchRepository):
         filters: Optional[dict] = None,
         numeric_filters: Optional[List[dict]] = None,
         modifiers: Optional[List[str]] = None,
+        ranking_preferences: Optional[dict] = None,
         size: int = 20,
         from_: int = 0,
         explain: bool = False
     ) -> Tuple[int, List[Tuple[float, SearchDocument]], dict]:
 
-        must_clauses = []
-        should_clauses = []
-        must_not_clauses = []
+        must_clauses: List[Dict[str, Any]] = []
+        should_clauses: List[Dict[str, Any]] = []
+        must_not_clauses: List[Dict[str, Any]] = []
 
         fields = self.ranking_manager.get_search_fields()
 
@@ -108,7 +115,6 @@ class OpenSearchSearchRepository(SearchRepository):
             must_clauses.append({"match_all": {}})
 
         if modifiers:
-            # Boost for modifiers like fresh, frozen, raw, salted
             for mod in modifiers:
                 should_clauses.append({
                     "match": {
@@ -129,34 +135,77 @@ class OpenSearchSearchRepository(SearchRepository):
                     must_clauses.append({"match": {"ingredients": {"query": v, "operator": "and"}}})
                 elif k == "is_palm_oil_free":
                     if v is True:
-                        # Robust negation for palm oil
                         should_clauses.append({"term": {"attributes.flags.is_palm_oil_free": {"value": True, "boost": 2.0}}})
                         must_not_clauses.append({"match": {"ingredients": "palm oil"}})
                     elif v is False:
-                        # Must contain palm oil
                         must_clauses.append({"match": {"ingredients": "palm oil"}})
                 elif k.startswith("is_") and v is not None:
-                    # For other boolean constraints, we keep them as must for now,
-                    # but they could also be softened.
                     must_clauses.append({"term": {f"attributes.flags.{k}": v}})
 
         if numeric_filters:
             for nf in numeric_filters:
-                nutrient = nf.get("nutrient")
-                op = nf.get("operator")
-                val = nf.get("value")
+                nutrient = nf.get("nutrient", "")
+                op = nf.get("operator", "lte")
+                val = nf.get("value", 0.0)
                 basis = nf.get("comparison_basis", "per_100g")
 
                 mapped_nutrient = NUTRIENT_FIELD_MAP.get(nutrient, nutrient)
-
                 field_path = f"attributes.nutrition.{mapped_nutrient}.{basis}"
-                must_clauses.append({
-                    "range": {
-                        field_path: {
-                            op: val
+
+                if op == "eq":
+                    must_clauses.append({
+                        "range": {
+                            field_path: {
+                                "gte": max(0.0, val - 0.5),
+                                "lte": val + 0.5
+                            }
                         }
+                    })
+                elif op in {"lte", "lt"}:
+                    must_clauses.append({
+                        "range": {
+                            field_path: {
+                                op: val,
+                                "gte": 0.0
+                            }
+                        }
+                    })
+                else:  # gte, gt
+                    must_clauses.append({
+                        "range": {
+                            field_path: {
+                                op: val
+                            }
+                        }
+                    })
+
+        # Directional ranking preference (e.g. "lowest sugar", "highest protein")
+        sort_clauses: List[Any] = []
+        if ranking_preferences and ranking_preferences.get("sort_nutrient"):
+            sort_nutrient = ranking_preferences["sort_nutrient"]
+            order = ranking_preferences.get("order", "asc")
+            mapped_nutrient = NUTRIENT_FIELD_MAP.get(sort_nutrient, sort_nutrient)
+            field_path = f"attributes.nutrition.{mapped_nutrient}.per_100g"
+
+            # Filter out documents without this nutrient so empty values don't pollute
+            must_clauses.append({
+                "range": {
+                    field_path: {
+                        "gte": 0.0
                     }
-                })
+                }
+            })
+
+            sort_clauses = [
+                {
+                    field_path: {
+                        "order": order,
+                        "missing": "_last",
+                        "unmapped_type": "float"
+                    }
+                },
+                "_score"
+            ]
 
         if not must_clauses and not should_clauses:
             must_clauses.append({"match_all": {}})
@@ -170,26 +219,44 @@ class OpenSearchSearchRepository(SearchRepository):
             }
         }
 
+        # Boost functions: completeness + bonus boost for exact zero sugar
+        score_functions: List[Dict[str, Any]] = [
+            {
+                "field_value_factor": {
+                    "field": "metadata.completeness",
+                    "factor": self.ranking_manager.completeness_factor,
+                    "missing": 0.0
+                }
+            }
+        ]
 
-        query_body = {
+        # If zero sugar was requested, give highest relevance score boost to true 0.0g products
+        if numeric_filters and any(nf.get("is_zero_constraint") for nf in numeric_filters):
+            score_functions.append({
+                "filter": {
+                    "range": {
+                        "attributes.nutrition.sugars.per_100g": {
+                            "lte": 0.05
+                        }
+                    }
+                },
+                "weight": 3.0
+            })
+
+        query_body: Dict[str, Any] = {
             "size": size,
             "from": from_,
             "query": {
                 "function_score": {
                     "query": bool_query,
-                    "functions": [
-                        {
-                            "field_value_factor": {
-                                "field": "metadata.completeness",
-                                "factor": self.ranking_manager.completeness_factor,
-                                "missing": 0.0
-                            }
-                        }
-                    ],
+                    "functions": score_functions,
                     "boost_mode": "sum"
                 }
             }
         }
+
+        if sort_clauses:
+            query_body["sort"] = sort_clauses
 
         response = self.client.search(index=self.index, body=query_body)
 
@@ -198,7 +265,7 @@ class OpenSearchSearchRepository(SearchRepository):
 
         results = []
         for h in hits:
-            score = h["_score"]
+            score = h["_score"] if h.get("_score") is not None else 1.0
             doc = SearchDocument(**h["_source"])
             results.append((score, doc))
 
@@ -213,7 +280,6 @@ class OpenSearchSearchRepository(SearchRepository):
             response = self.client.get(index=self.index, id=doc_id)
             return SearchDocument(**response["_source"])
         except NotFoundError:
-            # Fallback search for documents that might match 'id' field
             query_body = {
                 "query": {
                     "term": {

@@ -1,255 +1,196 @@
 # AskOFF
 
-AskOFF is the natural-language search and retrieval engine for Open Food Facts Canada, providing high-performance, deterministic product discovery over ~114,453 Canadian food products.
+AskOFF is an open-source natural-language search and retrieval engine for **Open Food Facts Canada**, enabling fast, deterministic product discovery over **114,453 Canadian grocery products**.
 
 ---
 
-## Overview
+## 1. Project Overview
 
-Open Food Facts contains vast amounts of crowdsourced food data, but consumers query products using conversational descriptions, dietary restrictions, and recipe requirements (e.g. *"500 mL frozen blueberries"*, *"low sugar cereal"*, *"products with at least 20g protein"*).
+Open Food Facts provides an extensive open food database, but consumer grocery searches are inherently conversational and constraint-heavy (e.g. *"500 mL frozen blueberries"*, *"zero sugar chocolate"*, *"drinks under 300 calories"*).
 
-AskOFF bridges this gap with a low-latency, rule-based query understanding pipeline and OpenSearch BM25 lexical retrieval engine. It extracts structured dietary flags and numeric nutrition constraints from raw queries while ensuring fast, transparent, and reproducible search results without runtime LLM dependencies.
-
----
-
-## Features
-
-- **Natural-Language Query Understanding**: Automatically normalizes text, extracts brand/category/ingredient entities, detects user intent, and isolates modifiers.
-- **Dietary & Certification Filtering**: Robust extraction and filtering for `organic`, `vegan`, `vegetarian`, `palm_oil_free`, `gluten_free`, and `lactose_free`.
-- **Numeric Nutrition Constraints**: Parses explicit numerical bounds (e.g. `under 200 calories`, `at least 20g protein`) and evaluates them against normalized per-100g nutrient values.
-- **Threshold-Based Nutrition Queries**: Automatically maps qualitative phrases like `low sugar` ($\le 5\text{g}/100\text{g}$), `high protein` ($\ge 10\text{g}/100\text{g}$), and `low sodium` ($\le 0.12\text{g}/100\text{g}$) to indexed flags.
-- **Recipe Quantity Decoupling**: Separates recipe quantities (e.g. `500 mL`, `2 cups`, `2 tbsp`) from the search term so package sizes are never incorrectly filtered.
-- **Canadian French/English Synonyms**: Normalizes Canadian French and alternate spellings (e.g. `soya sauce` $\leftrightarrow$ `soy sauce`, `yoghurt` $\leftrightarrow$ `yogurt`).
-- **Fuzzy Typo Tolerance**: Tiered fuzzy multi-match catches misspellings (e.g. `peanute butter` $\rightarrow$ `peanut butter`) while preventing single-token noise.
-- **Metadata Completeness Ranking**: Boosts products with richer Open Food Facts metadata using OpenSearch function scores.
-- **Safe Zero-Downtime Index Lifecycle**: Versioned index builds, automated validation, and atomic alias promotion (`askoff_products`).
-- **Production-Ready FastAPI Backend**: Includes pagination limits, input sanitization, health/readiness probes, and CORS controls.
+AskOFF bridges the gap between unstructured consumer search queries and semi-structured catalog records. It uses a low-latency, rule-based query understanding pipeline and an OpenSearch 2.x BM25 retrieval engine to deliver accurate, constraint-compliant search results with sub-50ms execution times and zero runtime LLM dependencies.
 
 ---
 
-## Architecture
+## 2. What AskOFF Does
 
-### Ingestion & Indexing Pipeline
-```
-Open Food Facts Parquet (114k rows)
-       ↓
-OFFAdapter (DuckDB Stream)
-       ↓
-RawProduct (Pydantic Model)
-       ↓
-SearchDocumentBuilder (Entity & Flag Inference)
-       ↓
-SearchDocument (Canonical Schema)
-       ↓
-OpenSearch Indexer (Bulk API)
-       ↓
-Physical Index (askoff_products_YYYYMMDD_HHMMSS)
-       ↓
-Validation & Promotion → [ askoff_products (Alias) ]
-```
-
-### Search Pipeline
-```
-User Query (HTTP GET /search?q=...)
-       ↓
-FastAPI Router
-       ↓
-SearchEngine (Query Understanding Pipeline)
-  ├── Normalization & Canonical Synonyms
-  ├── Constraint & Entity Extraction
-  └── Intent Classification
-       ↓
-SearchQuery (Structured Representation)
-       ↓
-OpenSearchSearchRepository (Bool DSL: Phrase + AND + Tiered Fuzzy + Filters)
-       ↓
-OpenSearch 2.x Cluster (BM25 + Completeness Function Score)
-       ↓
-SearchResponse (JSON)
-```
+- **Understands Natural Language**: Extracts brands, food categories, recipe quantities, food modifiers, and dietary constraints from raw search strings.
+- **Enforces Hard Nutrition Constraints**: Accurately filters numeric criteria such as calories (`under 200 calories`), protein (`at least 20g protein`), sugar (`under 5g sugar`), and sodium (`under 120mg sodium`).
+- **Differentiates Zero Sugar & Low Sugar**: Enforces Canadian regulatory standards for `zero sugar` ($\le 0.5\text{g}/100\text{g}$) distinct from `low sugar` ($\le 5.0\text{g}/100\text{g}$).
+- **Applies Directional Nutrient Sorting**: Orders search results dynamically by nutritional properties when requested (e.g. `lowest sugar`, `highest protein`, `lowest calories`).
+- **Decouples Recipe Quantities**: Isolates measurements like `500 mL` or `2 cups` from search keywords so package sizes are never incorrectly filtered.
+- **Handles Canadian Bilingual Synonyms**: Normalizes Canadian French and regional spelling variants (e.g. `soya` $\leftrightarrow$ `soy`, `yoghurt` $\leftrightarrow$ `yogurt`).
+- **Provides Interactive Product Discovery**: Includes a modern React + Vite frontend with multi-product comparison, dietary filtering, and real-time search diagnostics.
 
 ---
 
-## Search Capabilities
+## 3. Architecture Overview
 
-| Query Type | Query Example | Parsed Clean Term | Extracted Constraints / Metadata |
-|---|---|---|---|
-| **Recipe Quantity** | `500 mL (2 cups) frozen blueberries` | `frozen blueberries` | `quantities: [500ml, 2cups]`, `modifier: frozen` |
-| **Dietary Restriction** | `palm oil free peanut butter` | `peanut butter` | `filter: {is_palm_oil_free: true}` |
-| **Numeric Nutrition** | `snacks under 200 calories` | `snacks` | `numeric: {calories <= 200 kcal/100g}` |
-| **Numeric Protein** | `products with at least 20g protein` | `products with` | `numeric: {protein >= 20g/100g}` |
-| **Nutrition Threshold** | `low sugar cereal` | `cereal` | `filter: {is_low_sugar: true}` |
-| **Fuzzy Matching** | `peanute butter` | `peanute butter` | Tiered fuzzy match $\rightarrow$ `Peanut Butter` |
-| **Synonyms (Bilingual)**| `soya sauce` | `soy sauce` | Canonicalized $\rightarrow$ `Soy Sauce` |
-| **Numeric Food Names** | `2% milk` | `2 milk` | Preserves `2` as keyword (not recipe quantity) |
-
----
-
-## API
-
-The backend serves an interactive OpenAPI documentation page at `http://localhost:8000/docs`.
-
-### Core Endpoints
-
-#### `GET /search`
-Execute a natural-language search over the 114k catalog.
-```bash
-curl "http://localhost:8000/search?q=low+sugar+cereal&size=5"
-```
-**Response**:
-```json
-{
-  "total": 1734,
-  "hits": [
-    {
-      "score": 331.28,
-      "product": {
-        "id": "0066721011862",
-        "product_name": "Cocca Cereal",
-        "brand": null,
-        "category": "Cereal",
-        "attributes": {
-          "nutrition": {
-            "sugars": {"value": 0.0, "per_100g": 0.0, "unit": "g"}
-          },
-          "flags": {"is_low_sugar": true}
-        }
-      }
-    }
-  ],
-  "query": "low sugar cereal",
-  "took_ms": 12
-}
-```
-
-#### `GET /products/{id}`
-Retrieve a single product by barcode.
-```bash
-curl "http://localhost:8000/products/0066721011862"
-```
-
-#### `GET /autocomplete?q=pea`
-Retrieve prefix completion suggestions.
-```bash
-curl "http://localhost:8000/autocomplete?q=pea&size=5"
-```
-
-#### `POST /compare`
-Compare multiple products by ID.
-```bash
-curl -X POST "http://localhost:8000/compare" \
-  -H "Content-Type: application/json" \
-  -d '{"product_ids": ["0066721011862", "0061362433721"]}'
-```
-
-#### `GET /health` & `GET /ready`
-Liveness and readiness probes for orchestrators and load balancers.
-```bash
-curl "http://localhost:8000/health"
-curl "http://localhost:8000/ready"
-```
-
----
-
-## Data
-
-The canonical dataset is stored at:
 ```text
-data/raw/normalized.parquet
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              SEARCH PIPELINE                                │
+│                                                                             │
+│  User Query (HTTP GET /search?q=...)                                        │
+│        │                                                                    │
+│        ▼                                                                    │
+│  FastAPI API Layer                                                          │
+│        │                                                                    │
+│        ▼                                                                    │
+│  SearchEngine (Query Understanding Pipeline)                                │
+│   ├── Normalizer & Canadian Synonyms                                        │
+│   ├── Constraint & Quantity Extractor                                       │
+│   └── Entity & Intent Detector                                              │
+│        │                                                                    │
+│        ▼                                                                    │
+│  OpenSearch 2.x Cluster (Bool DSL: Phrase + AND + Tiered Fuzzy + Filters)   │
+│        │                                                                    │
+│        ▼                                                                    │
+│  SearchResponse (Ranked Products + Complete Query Explain Metadata)         │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
-- **Total Products**: ~114,453 Canadian Open Food Facts products.
-- **Columns**: `code`, `product_name`, `brands`, `categories`, `ingredients_text`, `nutriments`, `nutriscore_grade`, `nova_group`, `ecoscore_grade`, `completeness`, `product_name_clean`, `brands_clean`, `categories_clean`, `ingredients_clean`, `search_text`.
 
 ---
 
-## Development Setup
+## 4. Key Capabilities
 
-### 1. Prerequisites
+| Capability | Example Query | Parsed Keyword | Applied Constraints / Filters |
+| :--- | :--- | :--- | :--- |
+| **Recipe Quantity** | `500 mL frozen blueberries` | `frozen blueberries` | `quantity: 500 mL`, `modifier: frozen` |
+| **Zero Sugar** | `zero sugar chocolate` | `chocolate` | `filter: {sugars <= 0.5g/100g}` |
+| **Numeric Calorie Bound** | `drinks under 300 calories` | `drinks` | `filter: {energy <= 300 kcal/100g}` |
+| **Numeric Protein Bound** | `snacks with at least 20g protein` | `snacks` | `filter: {protein >= 20g/100g}` |
+| **Directional Sort** | `lowest sugar cereal` | `cereal` | `sort: sugars ASC` |
+| **Dietary Restriction** | `vegan high protein snacks` | `snacks` | `filters: {is_vegan: true, is_high_protein: true}` |
+| **Store Brand Discovery** | `Compliments peanut butter` | `peanut butter` | `filter: {brand: Compliments}` |
+| **Typo Tolerance** | `high protien snacks` | `snacks` | Normalized `protien` $\to$ `protein` |
+
+---
+
+## 5. Tech Stack
+
+- **Backend**: Python 3.11+, FastAPI, Pydantic v2, Uvicorn
+- **Search & Ingestion**: OpenSearch 2.12+, DuckDB, PyArrow / Parquet
+- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, TanStack Query, Lucide Icons
+- **Infrastructure**: Docker, Docker Compose
+
+---
+
+## 6. Quick Start
+
+### Prerequisites
 - Python 3.11+
-- OpenSearch 2.12+ (or Docker Compose)
+- Node.js 18+ and npm
+- Docker and Docker Compose v2
 
-### 2. Install Dependencies
+### Clone Repository
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -r backend/requirements.txt
-pip install pytest ruff
-```
-
-### 3. Start Local OpenSearch
-```bash
-docker compose up -d opensearch
-```
-
-### 4. Verify Index Status & Run Server
-```bash
-# Verify 114k OpenSearch index
-python backend/scripts/verify_index.py
-
-# Start FastAPI server
-python backend/scripts/run_server.py
+git clone https://github.com/SaitejaKommi/Ask-OFF-WebApp.git
+cd Ask-OFF-WebApp
 ```
 
 ---
 
-## Docker Deployment
+## 7. Running the Backend
 
-To spin up the complete stack (OpenSearch + Indexer Job + FastAPI):
+### Option A: Via Docker Compose (Recommended)
 ```bash
-# Start development stack
+# Start OpenSearch, Indexer, and FastAPI backend
 docker compose up --build -d
 
-# Verify readiness
+# Verify backend readiness
 curl http://localhost:8000/ready
 ```
 
-See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for production configuration and [OPERATIONS.md](docs/OPERATIONS.md) for operational maintenance.
+### Option B: Local Python Development
+```bash
+# Set up virtual environment
+python -m venv .venv
+# On Linux/macOS: source .venv/bin/activate
+# On Windows: .venv\Scripts\activate
+
+# Install dependencies
+pip install -r backend/requirements.txt
+
+# Start OpenSearch in Docker
+docker compose up -d opensearch
+
+# Verify index & start backend server
+python backend/scripts/verify_index.py
+python backend/scripts/run_server.py
+```
+
+The API will be available at `http://localhost:8000` (Interactive docs at `http://localhost:8000/docs`).
 
 ---
 
-## Testing & Verification
+## 8. Running the Frontend
 
-Run the automated test suite (129 unit, integration, and quality tests):
 ```bash
-pytest backend/tests/
+cd frontend
+
+# Install dependencies
+npm install
+
+# Start Vite development server
+npm run dev
 ```
 
-Run code formatting and linting checks:
+Open `http://localhost:5173` in your browser to interact with the discovery application.
+
+---
+
+## 9. Running Tests
+
+### Automated Backend Tests (Pytest)
+```bash
+pytest backend/tests/ -v
+```
+
+### Code Style & Linting (Ruff)
 ```bash
 ruff check backend/
 ```
 
-Run search evaluation benchmarks:
+### Frontend Build Validation
 ```bash
-python backend/evaluation/evaluate.py --benchmark backend/evaluation/benchmark_queries.json
+cd frontend && npm run build
 ```
 
 ---
 
-## Contributing
+## 10. Dataset Requirements
 
-Contributions are welcome! Please review [CONTRIBUTING.md](CONTRIBUTING.md) for branch guidelines, code style standards, and test expectations.
-
-For in-depth architectural details, refer to [docs/UNDERSTAND_CODEBASE.md](docs/UNDERSTAND_CODEBASE.md).
-
----
-
-## Project Status
-
-- **Current Version**: `0.2.0` (P3 Retrieval Engine)
-- **Status**: Stable Lexical Search Backend MVP over 114,453 Canadian Open Food Facts products.
+AskOFF operates over the Canadian Open Food Facts dataset located at:
+```text
+data/raw/normalized.parquet
+```
+- **Total Products**: ~114,453 Canadian food products.
+- **Schema**: `code`, `product_name`, `brands`, `categories`, `ingredients_text`, `nutriments`, `nutriscore_grade`, `nova_group`, `ecoscore_grade`, `completeness`.
 
 ---
 
-## Roadmap
+## 11. Contributing
 
-- **Dense Neural Search**: Add vector embeddings for semantic query abstraction.
-- **Hybrid Fusion**: Combine BM25 with dense vectors using Reciprocal Rank Fusion (RRF).
-- **Cross-Encoder Reranking**: Integrate lightweight local reranker for top-20 precision.
-- **Human Relevance Benchmark**: Expand benchmark with graded human relevance annotations.
+Contributions are welcome! Please review [CONTRIBUTING.md](CONTRIBUTING.md) for code style guidelines, branch workflows, and PR requirements.
 
 ---
 
-## License
+## 12. Technical Documentation
+
+For the complete technical architecture, request lifecycles, ranking equations, and OpenSearch mapping schemas, see:
+- [docs/UNDERSTAND_CODEBASE.md](docs/UNDERSTAND_CODEBASE.md) — Single comprehensive architecture guide.
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Deployment, operations, and zero-downtime index lifecycle.
+
+---
+
+## 13. Current Limitations
+
+- **Lexical BM25 Engine**: Uses OpenSearch BM25 and rule-based NLP. Semantic vector embeddings and hybrid dense retrieval are deferred to future milestones.
+- **Product Images**: The Canadian Open Food Facts dataset does not contain image URLs. The frontend uses deterministic, polished SVG placeholders.
+- **Unrecorded Nutrition Data**: Products with missing nutrient values in Open Food Facts are safely excluded from hard threshold queries to prevent false positives.
+
+---
+
+## 14. License
 
 This project is licensed under the [Apache 2.0 License](LICENSE).
