@@ -6,7 +6,7 @@ AskOFF is an open-source natural-language search and retrieval engine for **Open
 
 ## 1. Project Overview
 
-Open Food Facts provides an extensive open food database, but consumer grocery searches are inherently conversational and constraint-heavy (e.g. *"500 mL frozen blueberries"*, *"zero sugar chocolate"*, *"drinks under 300 calories"*).
+Open Food Facts provides an extensive open food database, but consumer grocery searches are inherently conversational and constraint-heavy (e.g. *"250 g tomato sauce"*, *"zero sugar chocolate"*, *"drinks under 300 calories"*).
 
 AskOFF bridges the gap between unstructured consumer search queries and semi-structured catalog records. It uses a low-latency, rule-based query understanding pipeline and an OpenSearch 2.x BM25 retrieval engine to deliver accurate, constraint-compliant search results with sub-50ms execution times and zero runtime LLM dependencies.
 
@@ -18,9 +18,9 @@ AskOFF bridges the gap between unstructured consumer search queries and semi-str
 - **Enforces Hard Nutrition Constraints**: Accurately filters numeric criteria such as calories (`under 200 calories`), protein (`at least 20g protein`), sugar (`under 5g sugar`), and sodium (`under 120mg sodium`).
 - **Differentiates Zero Sugar & Low Sugar**: Enforces Canadian regulatory standards for `zero sugar` ($\le 0.5\text{g}/100\text{g}$) distinct from `low sugar` ($\le 5.0\text{g}/100\text{g}$).
 - **Applies Directional Nutrient Sorting**: Orders search results dynamically by nutritional properties when requested (e.g. `lowest sugar`, `highest protein`, `lowest calories`).
-- **Decouples Recipe Quantities**: Isolates measurements like `500 mL` or `2 cups` from search keywords so package sizes are never incorrectly filtered.
+- **Decouples Recipe Quantities**: Isolates measurements like `250 g`, `500 mL`, or `2 cups` from search keywords so package sizes are never incorrectly filtered.
 - **Handles Canadian Bilingual Synonyms**: Normalizes Canadian French and regional spelling variants (e.g. `soya` $\leftrightarrow$ `soy`, `yoghurt` $\leftrightarrow$ `yogurt`).
-- **Provides Interactive Product Discovery**: Includes a modern React + Vite frontend with multi-product comparison, dietary filtering, and real-time search diagnostics.
+- **Fast & Scalable REST API**: Provides low-latency FastAPI endpoints for search, product lookup, autocomplete, and multi-product comparison.
 
 ---
 
@@ -55,7 +55,7 @@ AskOFF bridges the gap between unstructured consumer search queries and semi-str
 
 | Capability | Example Query | Parsed Keyword | Applied Constraints / Filters |
 | :--- | :--- | :--- | :--- |
-| **Recipe Quantity** | `500 mL frozen blueberries` | `frozen blueberries` | `quantity: 500 mL`, `modifier: frozen` |
+| **Recipe Quantity** | `250 g tomato sauce` | `tomato sauce` | `quantity: 250 g` |
 | **Zero Sugar** | `zero sugar chocolate` | `chocolate` | `filter: {sugars <= 0.5g/100g}` |
 | **Numeric Calorie Bound** | `drinks under 300 calories` | `drinks` | `filter: {energy <= 300 kcal/100g}` |
 | **Numeric Protein Bound** | `snacks with at least 20g protein` | `snacks` | `filter: {protein >= 20g/100g}` |

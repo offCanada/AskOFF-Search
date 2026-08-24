@@ -9,7 +9,7 @@ This document is the authoritative engineering reference for the AskOFF search a
 AskOFF is an open-source natural-language search and retrieval engine designed for the **Canadian Open Food Facts catalog (~114,453 products)**. 
 
 Consumers frequently search for groceries using conversational, contextual phrases rather than exact product titles:
-- *"500 mL frozen blueberries"* (contains a recipe quantity and food modifier)
+- *"250 g tomato sauce"* (contains a recipe quantity and food category)
 - *"zero sugar chocolate"* (demands hard thresholding on sugar $\le 0.5\text{g}/100\text{g}$)
 - *"drinks under 300 calories"* (specifies numeric energy upper bound)
 - *"lowest sugar cereal"* (requires directional ranking on nutrient value)

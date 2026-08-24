@@ -52,6 +52,14 @@ class TestNormalizer:
         res = QueryNormalizer.normalize("Gluten-Free, Sugar-Free!")
         assert res == "gluten-free sugar-free"
 
+    def test_normalize_pure_punctuation_behavior(self):
+        res = QueryNormalizer.normalize("!@#$^&*()+{}[]|:;'\"?,/")
+        assert res == ""
+
+    def test_normalize_empty_and_whitespace(self):
+        assert QueryNormalizer.normalize("") == ""
+        assert QueryNormalizer.normalize("     ") == ""
+
 
 class TestIntentDetector:
     def test_detect_brand_intent(self):
@@ -113,6 +121,12 @@ class TestConstraintExtractor:
         assert len(exps) == 9
         assert exps[0]["field"] == "organic"
 
+    def test_extract_conflicting_constraints_safe(self):
+        query = "vegan with palm oil"
+        res = ConstraintExtractor.extract(query)
+        assert res["filters"]["vegan"] is True
+        assert res["filters"]["palm_oil"] is True
+
 
 class TestSearchQueryPipeline:
     def test_pipeline_orchestrates_full_flow(self):
@@ -132,3 +146,10 @@ class TestSearchQueryPipeline:
         # Metadata check
         assert sq.metadata["took_ms"] >= 0
         assert len(sq.metadata["constraint_explanations"]) == 2
+
+    def test_pipeline_handles_empty_query(self):
+        sq = SearchQueryPipeline.process("")
+        assert sq.original_query == ""
+        assert sq.text_term == ""
+        assert sq.intent == "generic_search"
+

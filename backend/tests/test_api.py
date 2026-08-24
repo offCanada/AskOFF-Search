@@ -145,3 +145,45 @@ class TestOpenSearchUnavailable:
         assert response.status_code == 503
         data = response.json()
         assert "search_engine_unavailable" in data.get("error", "")
+
+
+class TestAdditionalEndpoints:
+    def test_root_endpoint_returns_status(self, test_client):
+        response = test_client.get("/")
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["status"] == "ok"
+        assert "service" in data
+        assert "version" in data
+
+    def test_autocomplete_endpoint(self, test_client, mock_search_engine):
+        mock_search_engine.autocomplete.return_value = ["peanut butter", "peanuts"]
+        response = test_client.get("/autocomplete", params={"q": "pea", "size": 2})
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json() == ["peanut butter", "peanuts"]
+
+    def test_suggestions_endpoint(self, test_client, mock_search_engine):
+        mock_search_engine.autocomplete.return_value = ["almond milk"]
+        response = test_client.get("/suggestions", params={"q": "alm"})
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json() == {"suggestions": ["almond milk"]}
+
+    def test_compare_endpoint(self, test_client, mock_search_engine):
+        from models.search_document import SearchDocument
+
+        doc = SearchDocument(
+            id="0008577002786",
+            product_name="Sample Honey",
+            search_text="Sample Honey",
+            semantic_document="Sample Honey",
+        )
+        mock_search_engine.get_product.return_value = doc
+        response = test_client.get("/compare", params={"ids": ["0008577002786"]})
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.json()) == 1
+
+    def test_ingredient_endpoint(self, test_client):
+        response = test_client.get("/ingredient/honey")
+        assert response.status_code == status.HTTP_200_OK
+        assert "hits" in response.json()
+

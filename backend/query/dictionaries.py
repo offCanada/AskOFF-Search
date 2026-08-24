@@ -62,7 +62,7 @@ def load_dynamic_dictionaries() -> bool:
         client = get_client()
         if not client.indices.exists(index=settings.opensearch_index):
             logger.warning("Index does not exist. Cannot load dynamic dictionaries.")
-            return
+            return False
 
         body = {
             "size": 0,

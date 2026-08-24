@@ -3,10 +3,9 @@ Canadian-English synonym configuration for AskOFF search (P3).
 
 Single source of truth: backend/search/synonyms_ca.txt
 
-Every entry is evidenced against the live 114,453-document Canadian OFF dataset
-(see backend/evaluation/pre_fix_audit.md Phase 2 evidence): each pair token and
-its synonym co-occur in the dataset, so the conflation is safe and data-driven,
-not an arbitrary blender.
+Every entry is evidenced against the live 114,453-document Canadian OFF dataset:
+each pair token and its synonym co-occur in the dataset, so the conflation is
+safe and data-driven, not an arbitrary blender.
 
 Mechanics:
   - Index-side: mappings.py injects these pairs as an inline OpenSearch synonym
