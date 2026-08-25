@@ -6,7 +6,7 @@ This document is the authoritative engineering reference for the AskOFF search a
 
 ## 1. System Purpose & Problem Statement
 
-AskOFF is an open-source natural-language search and retrieval engine designed for the **Canadian Open Food Facts catalog (~114,453 products)**. 
+AskOFF is an open-source natural-language search and retrieval engine designed for the **Canadian Open Food Facts catalog (124,145 products)**. 
 
 Consumers frequently search for groceries using conversational, contextual phrases rather than exact product titles:
 - *"250 g tomato sauce"* (contains a recipe quantity and food category)
@@ -29,7 +29,7 @@ AskOFF is split into two independent, decoupled pipelines:
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                       OFFLINE INGESTION PIPELINE                            │
 │                                                                             │
-│  data/raw/normalized.parquet (114k records)                                 │
+│  data/raw/off_canada_with_images.parquet (124k records)                      │
 │        │                                                                    │
 │        ▼                                                                    │
 │  OFFAdapter (Streaming DuckDB cursor)                                       │
@@ -94,7 +94,7 @@ AskOFF is split into two independent, decoupled pipelines:
 
 ### Data Sources & Adapters (`backend/adapters/`)
 AskOFF uses an adapter pattern (`BaseAdapter`) to ingest product data from diverse sources:
-- **`OFFAdapter`** (`off_adapter.py`): The primary adapter for the 114,453 Canadian Open Food Facts dataset. It uses embedded DuckDB to read `data/raw/normalized.parquet` in streaming memory-safe chunks.
+- **`OFFAdapter`** (`off_adapter.py`): The primary adapter for the 124,145 Canadian Open Food Facts dataset. It uses embedded DuckDB to read `data/raw/off_canada_with_images.parquet` in streaming memory-safe chunks.
 - **`ComplimentsAdapter`** (`compliments_adapter.py`): Dedicated adapter for store-brand private label datasets (`compliments_products.parquet`), supporting comparative and store-specific benchmarking.
 - **`ReferenceAdapter`** (`reference_adapter.py`): Mock and validation adapter used in unit and pipeline regression tests.
 
@@ -275,7 +275,7 @@ AskOFF enforces a **safe, zero-downtime blue/green index lifecycle**:
 
 1. **Versioned Index Creation** (`create_index.py`): Creates a new index with timestamped physical name (`askoff_products_20260824120000`) and applies mappings.
 2. **Bulk Ingestion** (`index_data.py`): Streams Parquet rows via `helpers.bulk` without impacting the live alias.
-3. **Validation** (`validate_index.py`): Validates total document count (must match expected 114,453) and verifies cluster status is not red.
+3. **Validation** (`validate_index.py`): Validates total document count (must match expected 124,145) and verifies cluster status is not red.
 4. **Atomic Promotion** (`promote_index.py`): Atomically switches the `askoff_products` alias from the old physical index to the new one.
 5. **Rollback** (`rollback_index.py`): Points the alias back to the previous physical index if needed.
 

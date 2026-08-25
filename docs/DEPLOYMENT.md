@@ -8,7 +8,7 @@ This document outlines the deployment, operations, monitoring, and index lifecyc
 
 - **Docker Engine & Docker Compose v2**: Installed and running.
 - **Hardware Resources**: At least 2 GB RAM allocated to OpenSearch and at least 1 GB free disk space.
-- **Dataset**: `data/raw/normalized.parquet` (114,453 Canadian Open Food Facts products) located in the project tree.
+- **Dataset**: `data/raw/off_canada_with_images.parquet` (124,145 Canadian Open Food Facts products) located in the project tree.
 
 ---
 
@@ -89,7 +89,7 @@ python backend/scripts/create_index.py
 python backend/scripts/index_data.py --index askoff_products_20260824120000
 
 # 3. Validate document counts and cluster health
-python backend/scripts/validate_index.py --index askoff_products_20260824120000 --expected-count 114453
+python backend/scripts/validate_index.py --index askoff_products_20260824120000 --expected-count 124145
 
 # 4. Atomically switch the alias to the new index
 python backend/scripts/promote_index.py --index askoff_products_20260824120000
