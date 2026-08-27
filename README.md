@@ -221,8 +221,8 @@ Ask-OFF is fully integrated with the Canadian Open Food Facts dataset:
 
 ### Clone Repository
 ```bash
-git clone https://github.com/SaitejaKommi/Ask-OFF-WebApp.git
-cd Ask-OFF-WebApp
+git clone https://github.com/SaitejaKommi/AskOFF-Search.git
+cd AskOFF-Search
 ```
 
 ---
@@ -232,6 +232,7 @@ cd Ask-OFF-WebApp
 ```bash
 # Build and start OpenSearch, Ingestion, and FastAPI Backend
 docker compose up --build -d
+
 
 # Verify backend health
 curl http://localhost:8000/health
@@ -267,7 +268,8 @@ pip install -r backend/requirements.txt
 python backend/scripts/verify_index.py
 
 # Start FastAPI server
-python backend/scripts/run_server.py
+python -m uvicorn backend.main:app --reload
+# or: python backend/scripts/run_server.py
 ```
 Backend API will be available at `http://localhost:8000` (Swagger UI at `http://localhost:8000/docs`).
 

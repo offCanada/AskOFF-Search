@@ -19,8 +19,8 @@ We are committed to providing a welcoming, inclusive, and harassment-free enviro
 
 ### 2. Fork and Clone
 ```bash
-git clone https://github.com/your-username/Ask-OFF-WebApp.git
-cd Ask-OFF-WebApp
+git clone https://github.com/your-username/AskOFF-Search.git
+cd AskOFF-Search
 ```
 
 ### 3. Set Up Python Virtual Environment
@@ -97,3 +97,4 @@ The API will be available at `http://localhost:8000`. OpenAPI documentation is a
 - **Adding Canadian French/English synonyms**: Update `backend/search/synonyms_ca.py` and `backend/search/synonyms_ca.txt`.
 - **Modifying OpenSearch indexing or schema**: Update `backend/search/mappings.py` and `backend/search/indexer.py`.
 - **Improving evaluation queries**: Update `backend/evaluation/benchmark_queries.json`.
+

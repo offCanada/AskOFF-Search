@@ -52,3 +52,7 @@ services:
 
 volumes:
   askoff-os-data:
+    name: ask-off-webapp_askoff-os-data
+    external: true
+
+

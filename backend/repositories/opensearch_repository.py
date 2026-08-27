@@ -244,6 +244,7 @@ class OpenSearchSearchRepository(SearchRepository):
             })
 
         query_body: Dict[str, Any] = {
+            "track_total_hits": True,
             "size": size,
             "from": from_,
             "query": {
