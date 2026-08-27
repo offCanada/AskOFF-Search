@@ -19,7 +19,7 @@ We are committed to providing a welcoming, inclusive, and harassment-free enviro
 
 ### 2. Fork and Clone
 ```bash
-git clone https://github.com/your-username/AskOFF-Search.git
+git clone https://github.com/offCanada/AskOFF-Search.git
 cd AskOFF-Search
 ```
 
@@ -97,4 +97,5 @@ The API will be available at `http://localhost:8000`. OpenAPI documentation is a
 - **Adding Canadian French/English synonyms**: Update `backend/search/synonyms_ca.py` and `backend/search/synonyms_ca.txt`.
 - **Modifying OpenSearch indexing or schema**: Update `backend/search/mappings.py` and `backend/search/indexer.py`.
 - **Improving evaluation queries**: Update `backend/evaluation/benchmark_queries.json`.
+
 

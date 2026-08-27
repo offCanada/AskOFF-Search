@@ -221,7 +221,7 @@ Ask-OFF is fully integrated with the Canadian Open Food Facts dataset:
 
 ### Clone Repository
 ```bash
-git clone https://github.com/SaitejaKommi/AskOFF-Search.git
+git clone https://github.com/offCanada/AskOFF-Search.git
 cd AskOFF-Search
 ```
 
@@ -308,3 +308,4 @@ This project is licensed under the [Apache 2.0 License](LICENSE).
 ### 🌱 Building intelligent, transparent food discovery for Open Food Facts Canada.
 
 </div>
+
