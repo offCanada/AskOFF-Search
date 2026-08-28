@@ -8,27 +8,68 @@ This document outlines the deployment, operations, monitoring, and index lifecyc
 
 - **Docker Engine & Docker Compose v2**: Installed and running.
 - **Hardware Resources**: At least 2 GB RAM allocated to OpenSearch and at least 1 GB free disk space.
-- **Dataset**: `data/raw/off_canada_with_images.parquet` (124,145 Canadian Open Food Facts products) located in the project tree.
+- **Docker External Volume**: On clean machines, create the expected volume before starting OpenSearch:
+  ```bash
+  docker volume create ask-off-webapp_askoff-os-data
+  ```
+- **Dataset Artifact**: The canonical Parquet dataset (~21.8 MB to ~48.9 MB) is not committed to Git. Obtain or generate it and place it at:
+  - `data/raw/off_canada_with_images.parquet` or
+  - `data/raw/normalized.parquet`
+  *(See official links on [Hugging Face](https://huggingface.co/datasets/offCanada/openfoodfacts-canada), [Colab Notebook](https://huggingface.co/datasets/offCanada/openfoodfacts-canada/blob/main/OFF_Canada_Data_Code.ipynb), or [Kaggle](https://www.kaggle.com/datasets/saitejakommi/open-food-facts-canada-dataset)).*
 
 ---
 
 ## 2. Local Development Deployment
 
-The local development configuration provides a self-contained environment running an OpenSearch 2.12 instance, an automatic indexing bootstrap job, and the FastAPI application.
+There are two verified workflows for local development:
 
-### Start the Stack
+### Workflow A: Hybrid Docker OpenSearch + Local Python Backend (Recommended)
+
+1. **Pre-create external volume and start OpenSearch**:
+   ```bash
+   docker volume create ask-off-webapp_askoff-os-data
+   docker compose up -d opensearch
+   ```
+2. **Set up Python virtual environment**:
+   ```bash
+   python3.11 -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   pip install -r backend/requirements.txt
+   ```
+3. **Place dataset in `data/raw/`**:
+   Ensure `data/raw/off_canada_with_images.parquet` or `data/raw/normalized.parquet` is present.
+4. **Bootstrap & verify the index**:
+   ```bash
+   # Populates the OpenSearch index from the Parquet dataset
+   python backend/scripts/bootstrap_index.py
+
+   # Verifies index document count (124,145 expected)
+   python backend/scripts/verify_index.py
+   ```
+5. **Start FastAPI**:
+   ```bash
+   python backend/scripts/run_server.py
+   ```
+
+### Workflow B: Full-Stack Docker Compose
+
+> [!IMPORTANT]
+> The `Dockerfile` copies `data/` into the image at build time, and the `indexer` container depends on `off_canada_with_images.parquet`. Therefore, you **must** obtain the Parquet dataset and place it at `data/raw/off_canada_with_images.parquet` **before** running `docker compose up --build -d`.
 
 ```bash
-# Clean start (resets existing local volume data)
-docker compose down -v
+# 1. Pre-create the external volume
+docker volume create ask-off-webapp_askoff-os-data
 
-# Build and start all services
+# 2. Build and start all services (OpenSearch, Indexer, and API)
 docker compose up --build -d
+
+# 3. Follow indexer progress
+docker compose logs -f indexer
 ```
 
 ### Ingestion & Startup Sequence
 1. **OpenSearch Container**: Starts single-node OpenSearch on internal port 9200 (bound to `127.0.0.1:9200`).
-2. **Indexer Job**: Runs `scripts/bootstrap_index.py`, which creates a timestamped index (`askoff_products_YYYYMMDDHHMMSS`), ingests `data/raw/normalized.parquet`, validates document count, and assigns the alias `askoff_products`.
+2. **Indexer Job**: Runs `scripts/bootstrap_index.py`, which creates a timestamped index (`askoff_products_YYYYMMDDHHMMSS`), ingests `data/raw/off_canada_with_images.parquet`, validates document count, and assigns the alias `askoff_products`.
 3. **API Service**: Waits for the indexer to complete successfully, then starts FastAPI on `http://127.0.0.1:8000`.
 
 ### Verifying Service Health
@@ -40,7 +81,7 @@ curl http://127.0.0.1:8000/health
 # Check search backend readiness
 curl http://127.0.0.1:8000/ready
 
-# Test sample query
+# Test sample query (must return actual product hits, not 0)
 curl "http://127.0.0.1:8000/search?q=peanut+butter&size=3"
 ```
 
@@ -125,6 +166,9 @@ Every API response includes an `X-Request-ID` header. Application log lines corr
 
 | Symptom | Probable Cause | Resolution |
 | :--- | :--- | :--- |
+| `external volume "ask-off-webapp_askoff-os-data" not found` | Compose expects pre-existing external volume on clean machine. | Run `docker volume create ask-off-webapp_askoff-os-data` before starting compose. |
+| `FileNotFoundError` during index bootstrap | Parquet dataset artifact not present in `data/raw/`. | Obtain `off_canada_with_images.parquet` or `normalized.parquet` from Hugging Face / Colab and place in `data/raw/`. |
+| Search returns HTTP 200 with 0 hits | OpenSearch is running but index is unpopulated. | Run `python backend/scripts/bootstrap_index.py` to index products. |
 | `/health` returns non-200 | FastAPI process crashed or blocked. | Check `docker compose logs api`. |
 | `/ready` returns 503 (`opensearch_unavailable`) | OpenSearch unreachable or bad credentials. | Check OpenSearch container status and verify TLS/network settings. |
 | `/ready` returns 503 (`index_missing` or `index_empty`) | Alias `askoff_products` not created or index empty. | Re-run `python backend/scripts/bootstrap_index.py`. |
